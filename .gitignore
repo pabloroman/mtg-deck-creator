@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# raw source data (large; download from Scryfall / export from ManaBox — see README)
+# leading slash anchors to repo root so public/data/ (the committed bundle) is NOT ignored
+/data/
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# NOTE: public/data/*.json IS committed — it is the small generated bundle the app ships.
