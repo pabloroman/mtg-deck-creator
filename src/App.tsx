@@ -77,23 +77,18 @@ export default function App() {
     return m;
   }, [keywordIndex]);
 
-  // Browse applies every filter, including the text search.
+  // One filtered list drives both views. Browse renders it directly; the
+  // Archetypes view scores and draws its card grids from the same pool, so every
+  // filter — the text search included — re-ranks the dashboard and narrows each
+  // archetype's Members/Payoffs lists (e.g. t:creature to see only creatures).
   const filtered = useMemo(
     () => (data ? applyCollectionFilters(data.cards, f, parsed) : []),
     [data, parsed, f.colors, f.axis, f.match, f.rarities, f.pauperOnly, f.group, f.minQuantity, f.sort],
   );
 
-  // The Archetypes view shares the same pipeline minus the text search: color,
-  // rarity and owned re-rank the dashboard by what the collection supports, while
-  // group/sort shape the per-archetype card grids.
-  const archetypePool = useMemo(
-    () => (data ? applyCollectionFilters(data.cards, f) : []),
-    [data, f.colors, f.axis, f.match, f.rarities, f.pauperOnly, f.group, f.minQuantity, f.sort],
-  );
-
   const scores = useMemo(
-    () => (data ? scoreArchetypes(archetypePool, data.archetypes) : []),
-    [data, archetypePool],
+    () => (data ? scoreArchetypes(filtered, data.archetypes) : []),
+    [data, filtered],
   );
   const selectedScore = useMemo(
     () => scores.find((s) => s.archetype.id === archetypeId) ?? null,
@@ -150,6 +145,106 @@ export default function App() {
         .join(' '),
     );
 
+  // The search box and its active-filter chips are shared by Browse and the
+  // Archetypes view, so both can narrow cards by tag, type, keyword or name.
+  const searchLeading = (
+    <div className="lg:max-w-xl lg:flex-1">
+      <SearchBar
+        query={f.query}
+        setQuery={f.setQuery}
+        tags={data?.tags ?? []}
+        keywords={keywordIndex}
+      />
+    </div>
+  );
+
+  const filterChips = (
+    <>
+      {parsed.tagSlugs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {parsed.tagSlugs.map((slug) => {
+            const meta = tagMeta.get(slug);
+            const known = meta !== undefined;
+            return (
+              <span
+                key={slug}
+                title={!known ? 'No card in your collection has this tag' : meta?.description ?? ''}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
+                  known
+                    ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
+                    : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
+                }`}
+              >
+                otag:{slug}
+                {known && <span className="text-zinc-500">· {meta!.count}</span>}
+                <button
+                  type="button"
+                  onClick={() => removeTag(slug)}
+                  className="ml-0.5 text-zinc-400 hover:text-white"
+                  aria-label={`Remove ${slug}`}
+                >
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {parsed.typeTerms.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {parsed.typeTerms.map((term) => (
+            <span
+              key={term}
+              className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300 ring-1 ring-violet-500/30"
+            >
+              t:{term}
+              <button
+                type="button"
+                onClick={() => removeType(term)}
+                className="ml-0.5 text-zinc-400 hover:text-white"
+                aria-label={`Remove type ${term}`}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {parsed.keywordSlugs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {parsed.keywordSlugs.map((slug) => {
+            const meta = keywordMeta.get(slug);
+            const known = meta !== undefined;
+            return (
+              <span
+                key={slug}
+                title={!known ? 'No card in your collection has this keyword' : ''}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
+                  known
+                    ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
+                    : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
+                }`}
+              >
+                kw:{slug}
+                {known && <span className="text-zinc-500">· {meta!.count}</span>}
+                <button
+                  type="button"
+                  onClick={() => removeKeyword(slug)}
+                  className="ml-0.5 text-zinc-400 hover:text-white"
+                  aria-label={`Remove keyword ${slug}`}
+                >
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0d0f14]/95 backdrop-blur">
@@ -183,114 +278,16 @@ export default function App() {
               )}
             </div>
 
-            {view === 'browse' && (
+            {(view === 'browse' || view === 'decks') && (
               <>
                 <FilterBar
                   filters={f}
                   availableRarities={availableRarities}
-                  leading={
-                    <div className="lg:max-w-xl lg:flex-1">
-                      <SearchBar
-                        query={f.query}
-                        setQuery={f.setQuery}
-                        tags={data?.tags ?? []}
-                        keywords={keywordIndex}
-                      />
-                    </div>
-                  }
+                  leading={searchLeading}
+                  colorLabel={view === 'decks' ? 'Buildable in:' : undefined}
                 />
-
-                {parsed.tagSlugs.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {parsed.tagSlugs.map((slug) => {
-                      const meta = tagMeta.get(slug);
-                      const known = meta !== undefined;
-                      return (
-                        <span
-                          key={slug}
-                          title={!known ? 'No card in your collection has this tag' : meta?.description ?? ''}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
-                            known
-                              ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
-                              : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
-                          }`}
-                        >
-                          otag:{slug}
-                          {known && <span className="text-zinc-500">· {meta!.count}</span>}
-                          <button
-                            type="button"
-                            onClick={() => removeTag(slug)}
-                            className="ml-0.5 text-zinc-400 hover:text-white"
-                            aria-label={`Remove ${slug}`}
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {parsed.typeTerms.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {parsed.typeTerms.map((term) => (
-                      <span
-                        key={term}
-                        className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300 ring-1 ring-violet-500/30"
-                      >
-                        t:{term}
-                        <button
-                          type="button"
-                          onClick={() => removeType(term)}
-                          className="ml-0.5 text-zinc-400 hover:text-white"
-                          aria-label={`Remove type ${term}`}
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {parsed.keywordSlugs.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {parsed.keywordSlugs.map((slug) => {
-                      const meta = keywordMeta.get(slug);
-                      const known = meta !== undefined;
-                      return (
-                        <span
-                          key={slug}
-                          title={!known ? 'No card in your collection has this keyword' : ''}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
-                            known
-                              ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
-                              : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
-                          }`}
-                        >
-                          kw:{slug}
-                          {known && <span className="text-zinc-500">· {meta!.count}</span>}
-                          <button
-                            type="button"
-                            onClick={() => removeKeyword(slug)}
-                            className="ml-0.5 text-zinc-400 hover:text-white"
-                            aria-label={`Remove keyword ${slug}`}
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                {filterChips}
               </>
-            )}
-
-            {view === 'decks' && (
-              <FilterBar
-                filters={f}
-                availableRarities={availableRarities}
-                colorLabel="Buildable in:"
-              />
             )}
           </div>
         </div>
@@ -312,7 +309,7 @@ export default function App() {
           (selectedScore ? (
             <ArchetypeDetail
               score={selectedScore}
-              cards={archetypePool}
+              cards={filtered}
               onBack={() => setArchetypeId(null)}
               onSelectCard={setSelected}
             />
