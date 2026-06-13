@@ -127,3 +127,43 @@ export function isCosmetic(slug: string): boolean {
     slug.startsWith('draft-')
   );
 }
+
+/** Supertypes carry no card-to-card similarity signal — every legendary isn't
+ *  "similar" to every other. Excluded from {@link typeTokens}. Note: 'kindred'
+ *  (formerly 'tribal') is a real card *type*, not a supertype — keep it. */
+const SUPERTYPES = new Set<string>([
+  'legendary',
+  'basic',
+  'snow',
+  'world',
+  'ongoing',
+  'host',
+  'elite',
+]);
+
+const EM_DASH = '—'; // U+2014, separates types from subtypes in a type line
+
+/**
+ * Similarity tokens parsed from a Scryfall type line, namespaced by tier so a
+ * card type ('t:') and a subtype ('st:') never collide with each other or with
+ * an oracle tag of the same word:
+ *
+ *   'Artifact — Equipment'              -> ['t:artifact', 'st:equipment']
+ *   'Legendary Artifact Creature — …'   -> 't:artifact', 't:creature' (no 'legendary')
+ *   'Instant'                           -> ['t:instant']  (no subtype)
+ *
+ * Handles DFC faces (' // '), multiple pre-dash types, and supertype exclusion.
+ */
+export function typeTokens(typeLine: string): string[] {
+  const out = new Set<string>();
+  for (const face of typeLine.split(' // ')) {
+    const [pre, post = ''] = face.split(EM_DASH);
+    for (const w of pre.trim().toLowerCase().split(/\s+/)) {
+      if (w && !SUPERTYPES.has(w)) out.add(`t:${w}`);
+    }
+    for (const w of post.trim().toLowerCase().split(/\s+/)) {
+      if (w) out.add(`st:${w}`);
+    }
+  }
+  return [...out];
+}

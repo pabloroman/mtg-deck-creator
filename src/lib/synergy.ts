@@ -5,7 +5,7 @@ import type {
   ResolvedArchetype,
   SynergyHit,
 } from '../types';
-import { isCosmetic } from './ontology';
+import { isCosmetic, typeTokens } from './ontology';
 
 // --- tuning constants ---
 const SURPLUS_W = 0.1; // surplus is only a minor tiebreaker; engine dominates
@@ -105,6 +105,8 @@ export interface RelatedCards {
 }
 
 const COLOR_BONUS = 0.3; // minor tiebreak: cards that could share a deck identity
+const TYPE_W = 0.5; // type/subtype agreement as a similarity factor (balanced nudge)
+const TYPE_IDF_CAP = 4.0; // clamp per-token idf so a lone exotic subtype can't dominate
 
 /**
  * Find the owned cards related to `selected`, split into two lists:
@@ -139,15 +141,23 @@ export function relatedCards(
   const selTags = new Set(selected.tags.filter((t) => !isCosmetic(t)));
   if (roles.length === 0 && selTags.size === 0) return { engine: [], similar: [] };
 
-  // Document frequency over non-cosmetic tags, for idf weighting.
+  // Document frequency over non-cosmetic tags AND type tokens, for idf weighting.
+  // Type tokens are parsed once per card here and cached for the candidate loop.
   const df = new Map<string, number>();
+  const typeDf = new Map<string, number>();
+  const typeCache = new Map<OwnedCard, string[]>();
   for (const c of cards) {
     for (const t of c.tags) {
       if (!isCosmetic(t)) df.set(t, (df.get(t) ?? 0) + 1);
     }
+    const tt = typeTokens(c.typeLine);
+    typeCache.set(c, tt);
+    for (const t of tt) typeDf.set(t, (typeDf.get(t) ?? 0) + 1);
   }
   const N = cards.length;
   const idf = (t: string): number => Math.log(N / ((df.get(t) ?? 0) + 1));
+  const typeIdf = (t: string): number => Math.log(N / ((typeDf.get(t) ?? 0) + 1));
+  const selTypes = new Set(typeCache.get(selected) ?? typeTokens(selected.typeLine));
 
   const seen = new Set<string>([cardKey(selected)]);
   const engine: SynergyHit[] = [];
@@ -193,6 +203,15 @@ export function relatedCards(
       }
     }
 
+    // 3) type/subtype agreement: two equipments are more alike than an equipment
+    //    and a plain artifact. idf-weighted (distinctive subtypes outweigh generic
+    //    types), capped so a lone exotic subtype can't outweigh the effect overlap.
+    let typeBonus = 0;
+    for (const t of typeCache.get(cand)!) {
+      if (selTypes.has(t)) typeBonus += Math.min(typeIdf(t), TYPE_IDF_CAP);
+    }
+    typeBonus *= TYPE_W;
+
     const colorBonus = colorCompatible(selected, cand) ? COLOR_BONUS : 0;
 
     if (complementStrength > 0 && !sharesRole) {
@@ -202,7 +221,7 @@ export function relatedCards(
       seen.add(key);
       similar.push({
         card: cand,
-        score: overlap + colorBonus,
+        score: overlap + typeBonus + colorBonus,
         reason: `similar effect · shares ${shared} tag${shared > 1 ? 's' : ''}`,
       });
     }

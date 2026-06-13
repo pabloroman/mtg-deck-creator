@@ -6,6 +6,7 @@ import assert from 'node:assert';
 import { parseQuery } from '../src/search/parseQuery';
 import { filterCards } from '../src/search/filterCards';
 import { scoreArchetypes, relatedCards, lopsidedSide } from '../src/lib/synergy';
+import { isCosmetic, typeTokens } from '../src/lib/ontology';
 import {
   isCommander,
   withinIdentity,
@@ -116,6 +117,40 @@ console.log(
   engine.slice(0, 3).map((h) => h.card.name).join(', '),
   '| similar:',
   similar.slice(0, 3).map((h) => h.card.name).join(', '),
+);
+
+// 8) typeTokens parsing (deterministic, data-independent)
+assert.deepStrictEqual(typeTokens('Artifact — Equipment').sort(), [
+  'st:equipment',
+  't:artifact',
+]);
+assert.deepStrictEqual(typeTokens('Legendary Artifact Creature — Equipment Octopus').sort(), [
+  'st:equipment',
+  'st:octopus',
+  't:artifact',
+  't:creature',
+]); // 'legendary' supertype excluded
+assert.deepStrictEqual(typeTokens('Instant'), ['t:instant']); // no subtype
+assert.ok(
+  typeTokens('Creature — Human Shaman // Enchantment — Aura Curse').includes('st:aura'),
+  'DFC back-face subtypes are parsed',
+);
+
+// 9) type-awareness: among an Equipment's similar cards, a fellow Equipment outranks a
+//    plain Artifact (asserted only when both appear — robust, never vacuously failing)
+const equip = cards.find(
+  (c) => c.typeLine.includes('— Equipment') && c.tags.some((t) => !isCosmetic(t)),
+);
+assert.ok(equip, 'expected an Equipment with a non-cosmetic tag');
+const eqSimilar = relatedCards(equip!, cards, archetypes).similar;
+const iEquip = eqSimilar.findIndex((h) => h.card.typeLine.includes('— Equipment'));
+const iArtifact = eqSimilar.findIndex((h) => h.card.typeLine === 'Artifact');
+if (iEquip !== -1 && iArtifact !== -1) {
+  assert.ok(iEquip < iArtifact, 'a fellow Equipment should outrank a plain Artifact');
+}
+console.log(
+  `relatedCards("${equip!.name}") similar:`,
+  eqSimilar.slice(0, 3).map((h) => `${h.card.name} [${h.card.typeLine}]`).join(', '),
 );
 
 // ---- commander guide ----
