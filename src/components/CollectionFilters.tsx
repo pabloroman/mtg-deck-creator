@@ -9,6 +9,8 @@ interface Props {
   onToggleRarity: (rarity: string) => void;
   minQuantity: number;
   onMinQuantity: (n: number) => void;
+  pauperOnly: boolean;
+  onTogglePauper: () => void;
   groupPrintings: boolean;
   onToggleGroup: () => void;
   sort: SortKey;
@@ -34,6 +36,8 @@ export function CollectionFilters({
   onToggleRarity,
   minQuantity,
   onMinQuantity,
+  pauperOnly,
+  onTogglePauper,
   groupPrintings,
   onToggleGroup,
   sort,
@@ -84,6 +88,21 @@ export function CollectionFilters({
         <span className="text-xs text-zinc-500">Sort</span>
         <Segmented value={sort} onChange={onSortChange} options={SORT_OPTIONS} />
       </div>
+
+      {/* Pauper-legal toggle */}
+      <button
+        type="button"
+        onClick={onTogglePauper}
+        aria-pressed={pauperOnly}
+        title="Show only cards legal in the Pauper format"
+        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 transition ${
+          pauperOnly
+            ? 'bg-sky-500/20 text-sky-200 ring-sky-500/40'
+            : 'bg-white/5 text-zinc-400 ring-white/10 hover:text-zinc-200'
+        }`}
+      >
+        ◆ Pauper legal
+      </button>
 
       {/* Group printings toggle */}
       <button

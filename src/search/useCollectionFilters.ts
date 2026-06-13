@@ -24,6 +24,8 @@ export interface FilterControls {
   setMatch: (m: ColorMatch) => void;
   rarities: string[];
   toggleRarity: (rarity: string) => void;
+  pauperOnly: boolean;
+  togglePauper: () => void;
   minQuantity: number;
   setMinQuantity: (n: number) => void;
   group: boolean;
@@ -35,7 +37,7 @@ export interface FilterControls {
 /** The value subset of FilterControls that drives {@link applyCollectionFilters}. */
 export type FilterValues = Pick<
   FilterControls,
-  'colors' | 'axis' | 'match' | 'rarities' | 'group' | 'minQuantity' | 'sort'
+  'colors' | 'axis' | 'match' | 'rarities' | 'pauperOnly' | 'group' | 'minQuantity' | 'sort'
 >;
 
 export function useCollectionFilters(): FilterControls {
@@ -44,6 +46,7 @@ export function useCollectionFilters(): FilterControls {
   const [axis, setAxis] = useState<ColorAxis>('identity');
   const [match, setMatch] = useState<ColorMatch>('subset');
   const [rarities, setRarities] = useState<string[]>([]);
+  const [pauperOnly, setPauperOnly] = useState(false);
   const [minQuantity, setMinQuantity] = useState(0);
   const [group, setGroup] = useState(true);
   const [sort, setSort] = useState<SortKey>('name');
@@ -61,6 +64,8 @@ export function useCollectionFilters(): FilterControls {
     rarities,
     toggleRarity: (r) =>
       setRarities((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r])),
+    pauperOnly,
+    togglePauper: () => setPauperOnly((p) => !p),
     minQuantity,
     setMinQuantity,
     group,
@@ -89,6 +94,7 @@ export function applyCollectionFilters(
     axis: f.axis,
     match: f.match,
     rarities: f.rarities,
+    pauperOnly: f.pauperOnly,
   });
   if (f.group) list = groupPrintings(list);
   if (f.minQuantity > 0) list = list.filter((c) => c.quantity >= f.minQuantity);

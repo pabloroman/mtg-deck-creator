@@ -22,6 +22,7 @@ export interface OwnedCard {
   foil: boolean; // owns at least one foil copy
   tags: string[]; // oracle tag slugs ([] if untagged)
   keywords: string[]; // MTG keyword abilities, raw Scryfall display strings ([] if none)
+  pauperLegal: boolean; // legal in the Pauper format (legalities.pauper === 'legal')
   printingCount?: number; // set only when printings are grouped (see groupPrintings)
 }
 

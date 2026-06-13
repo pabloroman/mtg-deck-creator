@@ -53,6 +53,20 @@ assert.ok(
 );
 console.log(`kw:flying => ${flyers.length} cards`);
 
+// 2c) pauper-legal filter narrows to only Pauper-legal cards, and never adds results
+const allCards = filterCards(cards, {
+  tagSlugs: [], typeTerms: [], keywords: [], text: '',
+  colors: [], axis: 'identity', match: 'subset', rarities: [],
+});
+const pauper = filterCards(cards, {
+  tagSlugs: [], typeTerms: [], keywords: [], text: '',
+  colors: [], axis: 'identity', match: 'subset', rarities: [], pauperOnly: true,
+});
+assert.ok(pauper.length > 0, 'expected some Pauper-legal cards');
+assert.ok(pauper.length < allCards.length, 'pauperOnly should exclude some cards');
+assert.ok(pauper.every((c) => c.pauperLegal), 'every pauperOnly result must be Pauper-legal');
+console.log(`pauperOnly => ${pauper.length}/${allCards.length} cards`);
+
 // 3) tag + color (subset, identity): reanimate cards whose identity ⊆ {B}
 const reanimateB = run('otag:reanimate', ['B']);
 console.log(

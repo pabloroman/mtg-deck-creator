@@ -80,7 +80,7 @@ export default function App() {
   // Browse applies every filter, including the text search.
   const filtered = useMemo(
     () => (data ? applyCollectionFilters(data.cards, f, parsed) : []),
-    [data, parsed, f.colors, f.axis, f.match, f.rarities, f.group, f.minQuantity, f.sort],
+    [data, parsed, f.colors, f.axis, f.match, f.rarities, f.pauperOnly, f.group, f.minQuantity, f.sort],
   );
 
   // The Archetypes view shares the same pipeline minus the text search: color,
@@ -88,7 +88,7 @@ export default function App() {
   // group/sort shape the per-archetype card grids.
   const archetypePool = useMemo(
     () => (data ? applyCollectionFilters(data.cards, f) : []),
-    [data, f.colors, f.axis, f.match, f.rarities, f.group, f.minQuantity, f.sort],
+    [data, f.colors, f.axis, f.match, f.rarities, f.pauperOnly, f.group, f.minQuantity, f.sort],
   );
 
   const scores = useMemo(
@@ -107,6 +107,7 @@ export default function App() {
     parsed.text.length > 0 ||
     f.colors.length > 0 ||
     f.rarities.length > 0 ||
+    f.pauperOnly ||
     f.minQuantity > 0;
 
   // picking a tag (chip in the modal) always lands on the filtered browse view

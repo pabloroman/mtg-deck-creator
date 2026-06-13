@@ -14,6 +14,7 @@ export interface FilterOptions {
   axis: ColorAxis;
   match: ColorMatch;
   rarities: string[]; // selected rarity values ([] = no rarity filter)
+  pauperOnly?: boolean; // when true, keep only Pauper-legal cards
 }
 
 /** The color keys a card occupies on the chosen axis ('C' for colorless). */
@@ -24,11 +25,12 @@ export function cardColorKeys(card: OwnedCard, axis: ColorAxis): ColorFilterKey[
 
 /** Pure filter: tag (AND) ∧ type (AND) ∧ keyword (AND) ∧ name substring ∧ color ∧ rarity. */
 export function filterCards(cards: OwnedCard[], opts: FilterOptions): OwnedCard[] {
-  const { tagSlugs, typeTerms, keywords, text, colors, axis, match, rarities } = opts;
+  const { tagSlugs, typeTerms, keywords, text, colors, axis, match, rarities, pauperOnly } = opts;
   const colorSet = new Set(colors);
   const raritySet = new Set(rarities);
 
   return cards.filter((card) => {
+    if (pauperOnly && !card.pauperLegal) return false;
     for (const slug of tagSlugs) {
       if (!card.tags.includes(slug)) return false;
     }
