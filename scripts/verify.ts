@@ -25,6 +25,7 @@ const run = (raw: string, colors: ('W' | 'U' | 'B' | 'R' | 'G' | 'C')[] = []) =>
   return filterCards(cards, {
     tagSlugs: p.tagSlugs,
     typeTerms: p.typeTerms,
+    keywords: p.keywordSlugs,
     text: p.text,
     colors,
     axis: 'identity',
@@ -41,6 +42,15 @@ console.log('otag:reanimate =>', reanimate.map((c) => `${c.name} [${c.set}]`).jo
 const forest = run('forest');
 assert.ok(forest.some((c) => c.name === 'Forest'), 'expected a Forest in name search');
 console.log(`name "forest" => ${forest.length} cards`);
+
+// 2b) keyword search: kw:flying -> only cards carrying the Flying keyword
+const flyers = run('kw:flying');
+assert.ok(flyers.length > 0, 'expected some Flying cards via kw:flying');
+assert.ok(
+  flyers.every((c) => c.keywords.includes('Flying')),
+  'every kw:flying result must have the Flying keyword',
+);
+console.log(`kw:flying => ${flyers.length} cards`);
 
 // 3) tag + color (subset, identity): reanimate cards whose identity ⊆ {B}
 const reanimateB = run('otag:reanimate', ['B']);

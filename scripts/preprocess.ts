@@ -67,6 +67,7 @@ interface ScryCard {
   collector_number?: string;
   layout?: string;
   oracle_text?: string;
+  keywords?: string[]; // top-level; covers all faces (e.g. ["Flying","Trample"])
   image_uris?: ScryImageUris;
   card_faces?: ScryCardFace[];
 }
@@ -176,6 +177,7 @@ async function main() {
       quantity: own.quantity,
       foil: own.foil,
       tags: tags ? [...tags].sort() : [],
+      keywords: c.keywords ?? [],
     });
   }
   cards.sort((a, b) => a.name.localeCompare(b.name));
@@ -287,8 +289,10 @@ async function main() {
   fs.writeFileSync(path.join(OUT_DIR, 'archetypes.json'), JSON.stringify(archetypes));
 
   const reanimate = cards.filter((c) => c.tags.includes('reanimate')).length;
+  const flying = cards.filter((c) => c.keywords.includes('Flying')).length;
   console.log(
-    `\nWrote ${cards.length} cards, ${tags.length} tags, ${archetypes.length} archetypes. reanimate=${reanimate}`,
+    `\nWrote ${cards.length} cards, ${tags.length} tags, ${archetypes.length} archetypes.` +
+      ` reanimate=${reanimate} flying=${flying}`,
   );
   const sizeMb = (p: string) =>
     (fs.statSync(path.join(OUT_DIR, p)).size / 1e6).toFixed(2) + ' MB';
@@ -300,6 +304,9 @@ async function main() {
   // Sanity checks — fail loudly on a bad run.
   if (reanimate !== 3) {
     throw new Error(`Sanity check failed: expected reanimate=3, got ${reanimate}`);
+  }
+  if (flying === 0) {
+    throw new Error('Sanity check failed: expected at least one card with the Flying keyword');
   }
   const aristo = archetypes.find((a) => a.id === 'aristocrats');
   if (!aristo || !aristo.enablers.length || !aristo.payoffs.length) {

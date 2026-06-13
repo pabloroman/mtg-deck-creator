@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useCollection } from './data/useCollection';
-import { parseQuery, appendTag, tagPrefixOf, typePrefixOf } from './search/parseQuery';
+import {
+  parseQuery,
+  appendTag,
+  tagPrefixOf,
+  typePrefixOf,
+  keywordPrefixOf,
+  keywordSlug,
+} from './search/parseQuery';
 import { filterCards, type ColorAxis, type ColorMatch } from './search/filterCards';
 import { groupPrintings } from './search/groupPrintings';
 import { scoreArchetypes } from './lib/synergy';
@@ -48,12 +55,45 @@ export default function App() {
     [data],
   );
 
+  // Keyword-ability index derived from the loaded cards, shaped as TagIndexEntry so the
+  // search box can reuse rankTags + TagAutocomplete. count = distinct owning cards (oracleId).
+  const keywordIndex = useMemo<TagIndexEntry[]>(() => {
+    const acc = new Map<string, { label: string; oids: Set<string> }>();
+    for (const c of data?.cards ?? []) {
+      for (const kw of c.keywords) {
+        const slug = keywordSlug(kw);
+        let e = acc.get(slug);
+        if (!e) {
+          e = { label: kw, oids: new Set() };
+          acc.set(slug, e);
+        }
+        e.oids.add(c.oracleId);
+      }
+    }
+    return [...acc.entries()]
+      .map(([slug, { label, oids }]) => ({
+        slug,
+        label,
+        description: null,
+        aliases: [],
+        count: oids.size,
+      }))
+      .sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug));
+  }, [data]);
+
+  const keywordMeta = useMemo(() => {
+    const m = new Map<string, TagIndexEntry>();
+    for (const k of keywordIndex) m.set(k.slug, k);
+    return m;
+  }, [keywordIndex]);
+
   const filtered = useMemo(() => {
     if (!data) return [];
     // 1. per-printing filters (tag, text, color, rarity)
     let list = filterCards(data.cards, {
       tagSlugs: parsed.tagSlugs,
       typeTerms: parsed.typeTerms,
+      keywords: parsed.keywordSlugs,
       text: parsed.text,
       colors,
       axis,
@@ -83,6 +123,7 @@ export default function App() {
   const hasFilters =
     parsed.tagSlugs.length > 0 ||
     parsed.typeTerms.length > 0 ||
+    parsed.keywordSlugs.length > 0 ||
     parsed.text.length > 0 ||
     colors.length > 0 ||
     rarities.length > 0 ||
@@ -119,6 +160,17 @@ export default function App() {
         .filter((tok) => {
           const pref = typePrefixOf(tok);
           return !(pref && tok.slice(pref.length).toLowerCase() === term);
+        })
+        .join(' '),
+    );
+
+  const removeKeyword = (slug: string) =>
+    setQuery((q) =>
+      q
+        .split(/\s+/)
+        .filter((tok) => {
+          const pref = keywordPrefixOf(tok);
+          return !(pref && tok.slice(pref.length).toLowerCase() === slug);
         })
         .join(' '),
     );
@@ -160,7 +212,12 @@ export default function App() {
               <>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                   <div className="lg:max-w-xl lg:flex-1">
-                    <SearchBar query={query} setQuery={setQuery} tags={data?.tags ?? []} />
+                    <SearchBar
+                      query={query}
+                      setQuery={setQuery}
+                      tags={data?.tags ?? []}
+                      keywords={keywordIndex}
+                    />
                   </div>
                   <ColorFilter
                     selected={colors}
@@ -233,6 +290,37 @@ export default function App() {
                         </button>
                       </span>
                     ))}
+                  </div>
+                )}
+
+                {parsed.keywordSlugs.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {parsed.keywordSlugs.map((slug) => {
+                      const meta = keywordMeta.get(slug);
+                      const known = meta !== undefined;
+                      return (
+                        <span
+                          key={slug}
+                          title={!known ? 'No card in your collection has this keyword' : ''}
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
+                            known
+                              ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
+                              : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
+                          }`}
+                        >
+                          kw:{slug}
+                          {known && <span className="text-zinc-500">· {meta!.count}</span>}
+                          <button
+                            type="button"
+                            onClick={() => removeKeyword(slug)}
+                            className="ml-0.5 text-zinc-400 hover:text-white"
+                            aria-label={`Remove keyword ${slug}`}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </>

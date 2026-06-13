@@ -1,5 +1,6 @@
 import type { OwnedCard } from '../types';
 import type { ColorFilterKey } from '../lib/mana';
+import { keywordSlug } from './parseQuery';
 
 export type ColorAxis = 'identity' | 'colors';
 export type ColorMatch = 'subset' | 'any';
@@ -7,6 +8,7 @@ export type ColorMatch = 'subset' | 'any';
 export interface FilterOptions {
   tagSlugs: string[];
   typeTerms: string[]; // type-line substrings, AND-ed together ([] = no type filter)
+  keywords: string[]; // MTG keyword-ability slugs, AND-ed together ([] = no keyword filter)
   text: string;
   colors: ColorFilterKey[]; // selected color toggles ([] = no color filter)
   axis: ColorAxis;
@@ -20,9 +22,9 @@ export function cardColorKeys(card: OwnedCard, axis: ColorAxis): ColorFilterKey[
   return arr.length ? (arr as ColorFilterKey[]) : ['C'];
 }
 
-/** Pure filter: tag (AND) ∧ type (AND) ∧ name substring ∧ color ∧ rarity. */
+/** Pure filter: tag (AND) ∧ type (AND) ∧ keyword (AND) ∧ name substring ∧ color ∧ rarity. */
 export function filterCards(cards: OwnedCard[], opts: FilterOptions): OwnedCard[] {
-  const { tagSlugs, typeTerms, text, colors, axis, match, rarities } = opts;
+  const { tagSlugs, typeTerms, keywords, text, colors, axis, match, rarities } = opts;
   const colorSet = new Set(colors);
   const raritySet = new Set(rarities);
 
@@ -33,6 +35,10 @@ export function filterCards(cards: OwnedCard[], opts: FilterOptions): OwnedCard[
     if (typeTerms.length) {
       const typeLine = card.typeLine.toLowerCase();
       for (const term of typeTerms) if (!typeLine.includes(term)) return false;
+    }
+    if (keywords.length) {
+      const cardKeywords = new Set(card.keywords.map(keywordSlug));
+      for (const k of keywords) if (!cardKeywords.has(k)) return false;
     }
     if (text && !card.name.toLowerCase().includes(text)) return false;
 
