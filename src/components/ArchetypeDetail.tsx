@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { ArchetypeScore, Color, OwnedCard } from '../types';
-import { COLOR_FILTER_KEYS, COLOR_META, type ColorFilterKey } from '../lib/mana';
+import { COLOR_META } from '../lib/mana';
 import { lopsidedSide } from '../lib/synergy';
 import { creatureSubtypes } from '../lib/ontology';
 import { CardGrid } from './CardGrid';
@@ -28,24 +28,17 @@ function dedupe(list: OwnedCard[]): OwnedCard[] {
 
 export function ArchetypeDetail({ score, cards, onBack, onSelectCard }: Props) {
   const a = score.archetype;
-  const [colors, setColors] = useState<ColorFilterKey[]>([]);
   const E = useMemo(() => new Set(a.enablers), [a]);
   const P = useMemo(() => new Set(a.payoffs), [a]);
   // Typal archetypes match members by creature subtype rather than enabler tags.
   const subs = useMemo(() => (a.subtypes?.length ? new Set(a.subtypes) : null), [a]);
   const thin = lopsidedSide(score);
 
+  // `cards` arrive already color-filtered — the Archetypes page owns the color filter.
   const { enablers, payoffs } = useMemo(() => {
-    const colorSet = new Set(colors);
-    const inColors = (c: OwnedCard) => {
-      if (colorSet.size === 0) return true;
-      const keys = (c.colorIdentity.length ? c.colorIdentity : ['C']) as ColorFilterKey[];
-      return keys.every((k) => colorSet.has(k)); // subset = playable in these colors
-    };
     const en: OwnedCard[] = [];
     const pa: OwnedCard[] = [];
     for (const c of cards) {
-      if (!inColors(c)) continue;
       const isMember = subs
         ? creatureSubtypes(c.typeLine).some((s) => subs.has(s))
         : c.tags.some((t) => E.has(t));
@@ -53,10 +46,7 @@ export function ArchetypeDetail({ score, cards, onBack, onSelectCard }: Props) {
       if (c.tags.some((t) => P.has(t))) pa.push(c);
     }
     return { enablers: dedupe(en), payoffs: dedupe(pa) };
-  }, [cards, E, P, subs, colors]);
-
-  const toggle = (k: ColorFilterKey) =>
-    setColors((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
+  }, [cards, E, P, subs]);
 
   return (
     <div>
@@ -93,38 +83,6 @@ export function ArchetypeDetail({ score, cards, onBack, onSelectCard }: Props) {
             </span>
           )}
         </p>
-      </div>
-
-      {/* color-identity sub-filter (subset = buildable in these colors) */}
-      <div className="mb-5 flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-xs text-zinc-500">Buildable in:</span>
-        {COLOR_FILTER_KEYS.map((k) => {
-          const active = colors.includes(k);
-          const m = COLOR_META[k];
-          return (
-            <button
-              key={k}
-              type="button"
-              onClick={() => toggle(k)}
-              title={m.name}
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ring-1 transition ${
-                active ? 'ring-2 ring-sky-400' : 'ring-black/40 opacity-60 hover:opacity-100'
-              }`}
-              style={{ backgroundColor: m.bg, color: m.text }}
-            >
-              {k}
-            </button>
-          );
-        })}
-        {colors.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setColors([])}
-            className="ml-1 text-xs text-zinc-400 hover:text-white"
-          >
-            clear
-          </button>
-        )}
       </div>
 
       <RoleSection

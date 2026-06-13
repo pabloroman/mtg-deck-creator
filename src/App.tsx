@@ -8,15 +8,12 @@ import {
   keywordPrefixOf,
   keywordSlug,
 } from './search/parseQuery';
-import { filterCards, type ColorAxis, type ColorMatch } from './search/filterCards';
-import { groupPrintings } from './search/groupPrintings';
+import { useCollectionFilters, applyCollectionFilters } from './search/useCollectionFilters';
 import { scoreArchetypes } from './lib/synergy';
 import { orderRarities } from './lib/rarity';
-import type { ColorFilterKey } from './lib/mana';
 import type { OwnedCard, TagIndexEntry } from './types';
 import { SearchBar } from './components/SearchBar';
-import { ColorFilter } from './components/ColorFilter';
-import { CollectionFilters, type SortKey } from './components/CollectionFilters';
+import { FilterBar } from './components/FilterBar';
 import { CardGrid } from './components/CardGrid';
 import { CardModal } from './components/CardModal';
 import { ResultSummary } from './components/ResultSummary';
@@ -32,17 +29,10 @@ export default function App() {
   const [view, setView] = useState<View>('browse');
   const [archetypeId, setArchetypeId] = useState<string | null>(null);
   const [commander, setCommander] = useState<OwnedCard | null>(null);
-  const [query, setQuery] = useState('');
-  const [colors, setColors] = useState<ColorFilterKey[]>([]);
-  const [axis, setAxis] = useState<ColorAxis>('identity');
-  const [match, setMatch] = useState<ColorMatch>('subset');
-  const [rarities, setRarities] = useState<string[]>([]);
-  const [minQuantity, setMinQuantity] = useState(0);
-  const [group, setGroup] = useState(true);
-  const [sort, setSort] = useState<SortKey>('name');
   const [selected, setSelected] = useState<OwnedCard | null>(null);
+  const f = useCollectionFilters();
 
-  const parsed = useMemo(() => parseQuery(query), [query]);
+  const parsed = useMemo(() => parseQuery(f.query), [f.query]);
 
   const tagMeta = useMemo(() => {
     const m = new Map<string, TagIndexEntry>();
@@ -87,35 +77,23 @@ export default function App() {
     return m;
   }, [keywordIndex]);
 
-  const filtered = useMemo(() => {
-    if (!data) return [];
-    // 1. per-printing filters (tag, text, color, rarity)
-    let list = filterCards(data.cards, {
-      tagSlugs: parsed.tagSlugs,
-      typeTerms: parsed.typeTerms,
-      keywords: parsed.keywordSlugs,
-      text: parsed.text,
-      colors,
-      axis,
-      match,
-      rarities,
-    });
-    // 2. optionally collapse printings of the same card (sums copies)
-    if (group) list = groupPrintings(list);
-    // 3. min-copies filter on the effective (per-printing or summed) quantity
-    if (minQuantity > 0) list = list.filter((c) => c.quantity >= minQuantity);
-    // 4. sort — cards arrive name-sorted; only re-sort for other orderings
-    if (sort === 'owned') {
-      list = [...list].sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
-    } else if (sort === 'cmc') {
-      list = [...list].sort((a, b) => a.cmc - b.cmc || a.name.localeCompare(b.name));
-    }
-    return list;
-  }, [data, parsed, colors, axis, match, rarities, group, minQuantity, sort]);
+  // Browse applies every filter, including the text search.
+  const filtered = useMemo(
+    () => (data ? applyCollectionFilters(data.cards, f, parsed) : []),
+    [data, parsed, f.colors, f.axis, f.match, f.rarities, f.group, f.minQuantity, f.sort],
+  );
+
+  // The Archetypes view shares the same pipeline minus the text search: color,
+  // rarity and owned re-rank the dashboard by what the collection supports, while
+  // group/sort shape the per-archetype card grids.
+  const archetypePool = useMemo(
+    () => (data ? applyCollectionFilters(data.cards, f) : []),
+    [data, f.colors, f.axis, f.match, f.rarities, f.group, f.minQuantity, f.sort],
+  );
 
   const scores = useMemo(
-    () => (data ? scoreArchetypes(data.cards, data.archetypes) : []),
-    [data],
+    () => (data ? scoreArchetypes(archetypePool, data.archetypes) : []),
+    [data, archetypePool],
   );
   const selectedScore = useMemo(
     () => scores.find((s) => s.archetype.id === archetypeId) ?? null,
@@ -127,25 +105,19 @@ export default function App() {
     parsed.typeTerms.length > 0 ||
     parsed.keywordSlugs.length > 0 ||
     parsed.text.length > 0 ||
-    colors.length > 0 ||
-    rarities.length > 0 ||
-    minQuantity > 0;
-
-  const toggleColor = (key: ColorFilterKey) =>
-    setColors((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]));
-
-  const toggleRarity = (r: string) =>
-    setRarities((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
+    f.colors.length > 0 ||
+    f.rarities.length > 0 ||
+    f.minQuantity > 0;
 
   // picking a tag (chip in the modal) always lands on the filtered browse view
   const addTag = (slug: string) => {
-    setQuery((q) => appendTag(q, slug));
+    f.setQuery((q) => appendTag(q, slug));
     setView('browse');
     setSelected(null);
   };
 
   const removeTag = (slug: string) =>
-    setQuery((q) =>
+    f.setQuery((q) =>
       q
         .split(/\s+/)
         .filter((tok) => {
@@ -156,7 +128,7 @@ export default function App() {
     );
 
   const removeType = (term: string) =>
-    setQuery((q) =>
+    f.setQuery((q) =>
       q
         .split(/\s+/)
         .filter((tok) => {
@@ -167,7 +139,7 @@ export default function App() {
     );
 
   const removeKeyword = (slug: string) =>
-    setQuery((q) =>
+    f.setQuery((q) =>
       q
         .split(/\s+/)
         .filter((tok) => {
@@ -212,35 +184,19 @@ export default function App() {
 
             {view === 'browse' && (
               <>
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  <div className="lg:max-w-xl lg:flex-1">
-                    <SearchBar
-                      query={query}
-                      setQuery={setQuery}
-                      tags={data?.tags ?? []}
-                      keywords={keywordIndex}
-                    />
-                  </div>
-                  <ColorFilter
-                    selected={colors}
-                    onToggle={toggleColor}
-                    axis={axis}
-                    onAxisChange={setAxis}
-                    match={match}
-                    onMatchChange={setMatch}
-                  />
-                </div>
-
-                <CollectionFilters
+                <FilterBar
+                  filters={f}
                   availableRarities={availableRarities}
-                  rarities={rarities}
-                  onToggleRarity={toggleRarity}
-                  minQuantity={minQuantity}
-                  onMinQuantity={setMinQuantity}
-                  groupPrintings={group}
-                  onToggleGroup={() => setGroup((g) => !g)}
-                  sort={sort}
-                  onSortChange={setSort}
+                  leading={
+                    <div className="lg:max-w-xl lg:flex-1">
+                      <SearchBar
+                        query={f.query}
+                        setQuery={f.setQuery}
+                        tags={data?.tags ?? []}
+                        keywords={keywordIndex}
+                      />
+                    </div>
+                  }
                 />
 
                 {parsed.tagSlugs.length > 0 && (
@@ -327,6 +283,14 @@ export default function App() {
                 )}
               </>
             )}
+
+            {view === 'decks' && (
+              <FilterBar
+                filters={f}
+                availableRarities={availableRarities}
+                colorLabel="Buildable in:"
+              />
+            )}
           </div>
         </div>
       </header>
@@ -347,7 +311,7 @@ export default function App() {
           (selectedScore ? (
             <ArchetypeDetail
               score={selectedScore}
-              cards={data.cards}
+              cards={archetypePool}
               onBack={() => setArchetypeId(null)}
               onSelectCard={setSelected}
             />
