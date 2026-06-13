@@ -1,6 +1,8 @@
 import { rarityMeta } from '../lib/rarity';
 import { Segmented } from './Segmented';
 
+export type SortKey = 'name' | 'owned';
+
 interface Props {
   availableRarities: string[];
   rarities: string[];
@@ -9,6 +11,8 @@ interface Props {
   onMinQuantity: (n: number) => void;
   groupPrintings: boolean;
   onToggleGroup: () => void;
+  sort: SortKey;
+  onSortChange: (s: SortKey) => void;
 }
 
 const COPIES_OPTIONS = [
@@ -16,6 +20,11 @@ const COPIES_OPTIONS = [
   { value: '2', label: '2+' },
   { value: '3', label: '3+' },
   { value: '4', label: 'Playset' },
+];
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'name', label: 'Name' },
+  { value: 'owned', label: 'Owned' },
 ];
 
 export function CollectionFilters({
@@ -26,6 +35,8 @@ export function CollectionFilters({
   onMinQuantity,
   groupPrintings,
   onToggleGroup,
+  sort,
+  onSortChange,
 }: Props) {
   const sel = new Set(rarities);
 
@@ -65,6 +76,12 @@ export function CollectionFilters({
           onChange={(v) => onMinQuantity(Number(v))}
           options={COPIES_OPTIONS}
         />
+      </div>
+
+      {/* Sort order */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-zinc-500">Sort</span>
+        <Segmented value={sort} onChange={onSortChange} options={SORT_OPTIONS} />
       </div>
 
       {/* Group printings toggle */}

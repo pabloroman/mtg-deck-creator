@@ -9,7 +9,7 @@ import type { ColorFilterKey } from './lib/mana';
 import type { OwnedCard, TagIndexEntry } from './types';
 import { SearchBar } from './components/SearchBar';
 import { ColorFilter } from './components/ColorFilter';
-import { CollectionFilters } from './components/CollectionFilters';
+import { CollectionFilters, type SortKey } from './components/CollectionFilters';
 import { CardGrid } from './components/CardGrid';
 import { CardModal } from './components/CardModal';
 import { ResultSummary } from './components/ResultSummary';
@@ -31,7 +31,8 @@ export default function App() {
   const [match, setMatch] = useState<ColorMatch>('subset');
   const [rarities, setRarities] = useState<string[]>([]);
   const [minQuantity, setMinQuantity] = useState(0);
-  const [group, setGroup] = useState(false);
+  const [group, setGroup] = useState(true);
+  const [sort, setSort] = useState<SortKey>('name');
   const [selected, setSelected] = useState<OwnedCard | null>(null);
 
   const parsed = useMemo(() => parseQuery(query), [query]);
@@ -63,8 +64,12 @@ export default function App() {
     if (group) list = groupPrintings(list);
     // 3. min-copies filter on the effective (per-printing or summed) quantity
     if (minQuantity > 0) list = list.filter((c) => c.quantity >= minQuantity);
+    // 4. sort — cards arrive name-sorted; only re-sort when ordering by copies owned
+    if (sort === 'owned') {
+      list = [...list].sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+    }
     return list;
-  }, [data, parsed, colors, axis, match, rarities, group, minQuantity]);
+  }, [data, parsed, colors, axis, match, rarities, group, minQuantity, sort]);
 
   const scores = useMemo(
     () => (data ? scoreArchetypes(data.cards, data.archetypes) : []),
@@ -175,6 +180,8 @@ export default function App() {
                   onMinQuantity={setMinQuantity}
                   groupPrintings={group}
                   onToggleGroup={() => setGroup((g) => !g)}
+                  sort={sort}
+                  onSortChange={setSort}
                 />
 
                 {parsed.tagSlugs.length > 0 && (
