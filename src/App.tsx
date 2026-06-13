@@ -104,9 +104,11 @@ export default function App() {
     if (group) list = groupPrintings(list);
     // 3. min-copies filter on the effective (per-printing or summed) quantity
     if (minQuantity > 0) list = list.filter((c) => c.quantity >= minQuantity);
-    // 4. sort — cards arrive name-sorted; only re-sort when ordering by copies owned
+    // 4. sort — cards arrive name-sorted; only re-sort for other orderings
     if (sort === 'owned') {
       list = [...list].sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+    } else if (sort === 'cmc') {
+      list = [...list].sort((a, b) => a.cmc - b.cmc || a.name.localeCompare(b.name));
     }
     return list;
   }, [data, parsed, colors, axis, match, rarities, group, minQuantity, sort]);

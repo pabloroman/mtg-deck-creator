@@ -1,7 +1,7 @@
 import { rarityMeta } from '../lib/rarity';
 import { Segmented } from './Segmented';
 
-export type SortKey = 'name' | 'owned';
+export type SortKey = 'name' | 'owned' | 'cmc';
 
 interface Props {
   availableRarities: string[];
@@ -25,6 +25,7 @@ const COPIES_OPTIONS = [
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'name', label: 'Name' },
   { value: 'owned', label: 'Owned' },
+  { value: 'cmc', label: 'CMC' },
 ];
 
 export function CollectionFilters({
