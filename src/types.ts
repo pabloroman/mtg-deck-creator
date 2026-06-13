@@ -42,6 +42,8 @@ export interface ArchetypeDef {
   description: string;
   enablers: string[]; // hub or exact slugs (expanded at build time)
   payoffs: string[];
+  subtypes?: string[]; // typal archetypes: a card is a MEMBER (counts as an enabler) if
+  //                      its creature type line includes one of these (e.g. ['goblin'])
 }
 
 /** An archetype after build-time DAG expansion: roles are concrete slugs that
@@ -52,6 +54,7 @@ export interface ResolvedArchetype {
   description: string;
   enablers: string[]; // concrete in-collection slugs
   payoffs: string[];
+  subtypes?: string[]; // typal archetypes: members matched by creature subtype (see ArchetypeDef)
 }
 
 export type SynergyRole = 'enabler' | 'payoff';

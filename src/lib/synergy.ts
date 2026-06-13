@@ -5,7 +5,7 @@ import type {
   ResolvedArchetype,
   SynergyHit,
 } from '../types';
-import { isCosmetic, typeTokens } from './ontology';
+import { creatureSubtypes, isCosmetic, typeTokens } from './ontology';
 
 // --- tuning constants ---
 const SURPLUS_W = 0.1; // surplus is only a minor tiebreaker; engine dominates
@@ -29,15 +29,28 @@ export function scoreArchetypes(
   cards: OwnedCard[],
   archetypes: ResolvedArchetype[],
 ): ArchetypeScore[] {
+  // Typal archetypes count MEMBERS by creature subtype, not by tag. Parse each
+  // card's subtypes once (only when some archetype actually needs them).
+  const anyTypal = archetypes.some((a) => a.subtypes?.length);
+  const subCache = anyTypal
+    ? new Map(cards.map((c) => [c, new Set(creatureSubtypes(c.typeLine))] as const))
+    : null;
+
   return archetypes
     .map((a): ArchetypeScore => {
       const E = new Set(a.enablers);
       const P = new Set(a.payoffs);
+      const subs = a.subtypes?.length ? new Set(a.subtypes) : null;
       const eCards = new Set<string>();
       const pCards = new Set<string>();
       const colorCount = new Map<Color, number>();
       for (const card of cards) {
-        const isE = hasAny(card.tags, E);
+        let isMember = false;
+        if (subs && subCache) {
+          const cs = subCache.get(card);
+          if (cs) for (const s of subs) if (cs.has(s)) { isMember = true; break; }
+        }
+        const isE = isMember || hasAny(card.tags, E);
         const isP = hasAny(card.tags, P);
         if (!isE && !isP) continue;
         const key = cardKey(card);
@@ -64,6 +77,9 @@ export function scoreArchetypes(
 
 /** Which side of an archetype is too thin to function, if any. */
 export function lopsidedSide(s: ArchetypeScore): 'enablers' | 'payoffs' | null {
+  // Typal archetypes are members + a shared anthem pool — "thin on payoffs" is
+  // expected and not actionable, so don't flag them.
+  if (s.archetype.subtypes?.length) return null;
   if (s.balance >= LOPSIDED_BALANCE || Math.min(s.e, s.p) >= LOPSIDED_MIN) return null;
   return s.e > s.p ? 'payoffs' : 'enablers'; // the THIN side
 }
@@ -129,8 +145,11 @@ export function relatedCards(
   archetypes: ResolvedArchetype[],
   limit = 12,
 ): RelatedCards {
-  // Precompute the selected card's archetype roles (as fast slug sets).
-  const roles = cardRoles(selected, archetypes).map((r) => ({
+  // Precompute the selected card's archetype roles (as fast slug sets). Typal
+  // archetypes are a dashboard-only concept (members + a shared anthem pool), so
+  // they're excluded here to avoid leaking generic anthems into related cards.
+  const synArchetypes = archetypes.filter((a) => !a.subtypes?.length);
+  const roles = cardRoles(selected, synArchetypes).map((r) => ({
     name: r.archetype.name,
     selEnabler: r.enabler,
     selPayoff: r.payoff,

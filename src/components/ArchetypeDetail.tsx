@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ArchetypeScore, Color, OwnedCard } from '../types';
 import { COLOR_FILTER_KEYS, COLOR_META, type ColorFilterKey } from '../lib/mana';
 import { lopsidedSide } from '../lib/synergy';
+import { creatureSubtypes } from '../lib/ontology';
 import { CardGrid } from './CardGrid';
 
 interface Props {
@@ -30,6 +31,8 @@ export function ArchetypeDetail({ score, cards, onBack, onSelectCard }: Props) {
   const [colors, setColors] = useState<ColorFilterKey[]>([]);
   const E = useMemo(() => new Set(a.enablers), [a]);
   const P = useMemo(() => new Set(a.payoffs), [a]);
+  // Typal archetypes match members by creature subtype rather than enabler tags.
+  const subs = useMemo(() => (a.subtypes?.length ? new Set(a.subtypes) : null), [a]);
   const thin = lopsidedSide(score);
 
   const { enablers, payoffs } = useMemo(() => {
@@ -43,11 +46,14 @@ export function ArchetypeDetail({ score, cards, onBack, onSelectCard }: Props) {
     const pa: OwnedCard[] = [];
     for (const c of cards) {
       if (!inColors(c)) continue;
-      if (c.tags.some((t) => E.has(t))) en.push(c);
+      const isMember = subs
+        ? creatureSubtypes(c.typeLine).some((s) => subs.has(s))
+        : c.tags.some((t) => E.has(t));
+      if (isMember) en.push(c);
       if (c.tags.some((t) => P.has(t))) pa.push(c);
     }
     return { enablers: dedupe(en), payoffs: dedupe(pa) };
-  }, [cards, E, P, colors]);
+  }, [cards, E, P, subs, colors]);
 
   const toggle = (k: ColorFilterKey) =>
     setColors((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
@@ -78,7 +84,7 @@ export function ArchetypeDetail({ score, cards, onBack, onSelectCard }: Props) {
         </div>
         <p className="max-w-2xl text-sm text-zinc-400">{a.description}</p>
         <p className="text-xs text-zinc-500">
-          <span className="text-zinc-300">{score.e}</span> enablers ·{' '}
+          <span className="text-zinc-300">{score.e}</span> {subs ? 'members' : 'enablers'} ·{' '}
           <span className="text-zinc-300">{score.p}</span> payoffs ·{' '}
           <span className="text-zinc-300">{score.engine}</span> paired engine pieces
           {thin && (
@@ -121,8 +127,18 @@ export function ArchetypeDetail({ score, cards, onBack, onSelectCard }: Props) {
         )}
       </div>
 
-      <RoleSection title="Enablers" hint="produce the resource" cards={enablers} onSelectCard={onSelectCard} />
-      <RoleSection title="Payoffs" hint="reward it" cards={payoffs} onSelectCard={onSelectCard} />
+      <RoleSection
+        title={subs ? 'Members' : 'Enablers'}
+        hint={subs ? 'the tribe' : 'produce the resource'}
+        cards={enablers}
+        onSelectCard={onSelectCard}
+      />
+      <RoleSection
+        title="Payoffs"
+        hint={subs ? 'anthems & lords' : 'reward it'}
+        cards={payoffs}
+        onSelectCard={onSelectCard}
+      />
     </div>
   );
 }

@@ -73,9 +73,18 @@ export const ARCHETYPES: ArchetypeDef[] = [
   },
   {
     id: 'combat',
-    name: 'Combat / Attackers',
-    description: 'Push evasive, buffed attackers and cash in attack triggers.',
-    enablers: ['evasion', 'gives-double-strike', 'gives-first-strike', 'gives-menace', 'combat-ramp'],
+    name: 'Combat / Aggro',
+    description: 'Push evasive, hasty, buffed attackers and cash in attack triggers.',
+    enablers: [
+      'evasion',
+      'gives-double-strike',
+      'gives-first-strike',
+      'gives-menace',
+      'combat-ramp',
+      'gives-haste',
+      'gains-haste',
+      'synergy-haste',
+    ],
     payoffs: ['attack-trigger', 'attacking-matters', 'attacking-matters-self'],
   },
   {
@@ -84,6 +93,72 @@ export const ARCHETYPES: ArchetypeDef[] = [
     description: 'Drop extra lands and trigger landfall and lands-matter payoffs.',
     enablers: ['land-ramp', 'multi-land-ramp', 'play-additional-land', 'extra-land'],
     payoffs: ['landfall', 'lands-matter', 'differently-named-lands-matter'],
+  },
+  {
+    id: 'artifacts',
+    name: 'Artifacts',
+    description: 'Churn out artifacts and treasures, then cash in artifacts-matter payoffs.',
+    enablers: ['repeatable-artifact-tokens', 'repeatable-treasures'],
+    payoffs: [
+      'synergy-artifact',
+      'artifactfall',
+      'synergy-artifact-creature',
+      'improvise',
+      'metalcraft',
+    ],
+  },
+  {
+    id: 'vehicles',
+    name: 'Vehicles / Crew',
+    description: 'Crew powerful Vehicles and lean into vehicle synergies.',
+    enablers: ['alternative-crewing', 'bring-your-own-crew', 'animate-vehicle'],
+    payoffs: ['synergy-vehicle'],
+  },
+  {
+    id: 'equipment',
+    name: 'Equipment / Voltron',
+    description: 'Suit up one creature with Equipment and push it through for the win.',
+    enablers: [
+      'synergy-equipment',
+      'french-vanilla-equipment',
+      'cost-reducer-equipment',
+      'tutor-artifact-equipment',
+    ],
+    payoffs: ['evasion', 'gives-trample', 'gives-double-strike', 'unblockable'],
+  },
+  {
+    id: 'enchantments',
+    name: 'Enchantments',
+    description: 'Build around enchantments and auras and their constellation-style payoffs.',
+    enablers: ['cost-reducer-enchantment', 'impulse-enchantment'],
+    payoffs: [
+      'synergy-enchantment',
+      'enchantmentfall',
+      'synergy-enchantment-creature',
+      'synergy-aura',
+    ],
+  },
+  {
+    id: 'madness',
+    name: 'Discard / Madness',
+    description: 'Discard your own cards as a resource and reward it with madness and value.',
+    enablers: ['discard-outlet', 'free-discard-outlet', 'discard-outlet-creature', 'instant-speed-discard'],
+    payoffs: ['madness', 'self-discard-matters', 'discarded-type-matters'],
+  },
+  {
+    id: 'duress',
+    name: 'Hand Disruption',
+    description:
+      'Strip the opponent’s hand with targeted discard. (A disruption package — the payoff side is small.)',
+    enablers: ['thoughtseize', 'hate-discard', 'discard'],
+    payoffs: ['opponent-discard-matters', 'self-discard-matters'],
+  },
+  {
+    id: 'blink',
+    name: 'Blink / Flicker',
+    description: 'Flicker your creatures to re-use their enter- and leave-the-battlefield triggers.',
+    enablers: ['flicker-creature', 'flicker-slow', 'flicker-permanent', 'flicker-artifact', 'bounce-self'],
+    payoffs: ['enters-and-leaves-trigger-self', 'leaves-battlefield-trigger', 'leaves-trigger-self'],
   },
 ];
 
@@ -163,6 +238,25 @@ export function typeTokens(typeLine: string): string[] {
     }
     for (const w of post.trim().toLowerCase().split(/\s+/)) {
       if (w) out.add(`st:${w}`);
+    }
+  }
+  return [...out];
+}
+
+/**
+ * The creature subtypes (tribes) on a type line, e.g.
+ *   'Legendary Creature — Goblin Warrior' -> ['goblin', 'warrior']
+ *   'Artifact — Equipment'                -> []  (not a creature face)
+ * Only subtypes from creature/kindred faces count, so equipment/aura/land
+ * subtypes aren't mistaken for tribes. Used to drive typal archetypes.
+ */
+export function creatureSubtypes(typeLine: string): string[] {
+  const out = new Set<string>();
+  for (const face of typeLine.split(' // ')) {
+    const [pre, post = ''] = face.split(EM_DASH);
+    if (!/\b(creature|kindred)\b/i.test(pre)) continue;
+    for (const w of post.trim().toLowerCase().split(/\s+/)) {
+      if (w) out.add(w);
     }
   }
   return [...out];

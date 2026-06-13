@@ -6,7 +6,7 @@ import assert from 'node:assert';
 import { parseQuery } from '../src/search/parseQuery';
 import { filterCards } from '../src/search/filterCards';
 import { scoreArchetypes, relatedCards, lopsidedSide } from '../src/lib/synergy';
-import { isCosmetic, typeTokens } from '../src/lib/ontology';
+import { creatureSubtypes, isCosmetic, typeTokens } from '../src/lib/ontology';
 import {
   isCommander,
   withinIdentity,
@@ -151,6 +151,33 @@ if (iEquip !== -1 && iArtifact !== -1) {
 console.log(
   `relatedCards("${equip!.name}") similar:`,
   eqSimilar.slice(0, 3).map((h) => `${h.card.name} [${h.card.typeLine}]`).join(', '),
+);
+
+// 10) creatureSubtypes parsing (deterministic, data-independent)
+assert.deepStrictEqual(
+  creatureSubtypes('Legendary Creature — Goblin Warrior').sort(),
+  ['goblin', 'warrior'],
+);
+assert.deepStrictEqual(creatureSubtypes('Artifact — Equipment'), []); // not a creature face
+assert.ok(
+  creatureSubtypes('Enchantment Creature — Elf Druid // Land').includes('elf'),
+  'creature-face subtypes parsed even on a DFC',
+);
+
+// 11) typal archetypes: tribes are generated, members counted, and never flagged lopsided
+const allScores = scoreArchetypes(cards, archetypes);
+const typalScores = allScores.filter((s) => s.archetype.subtypes?.length);
+assert.ok(typalScores.length >= 5, `expected ≥5 typal archetypes, got ${typalScores.length}`);
+const goblins = typalScores.find((s) => s.archetype.subtypes?.includes('goblin'));
+assert.ok(goblins, 'expected a Goblins tribe');
+assert.ok(goblins!.e > 0, 'Goblins tribe should have members (e > 0)');
+assert.ok(
+  typalScores.every((s) => lopsidedSide(s) === null),
+  'typal archetypes must not be flagged lopsided',
+);
+console.log(
+  'typal archetypes:',
+  typalScores.map((s) => `${s.archetype.name}(${s.e})`).join(', '),
 );
 
 // ---- commander guide ----

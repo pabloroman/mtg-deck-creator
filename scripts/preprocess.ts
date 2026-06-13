@@ -15,7 +15,7 @@ import streamChain from 'stream-chain';
 import streamJson from 'stream-json';
 import streamArrayMod from 'stream-json/streamers/StreamArray';
 import type { Color, OwnedCard, ResolvedArchetype, TagIndexEntry } from '../src/types';
-import { ARCHETYPES } from '../src/lib/ontology';
+import { ARCHETYPES, creatureSubtypes } from '../src/lib/ontology';
 
 // stream-* packages are CommonJS; under Node ESM use default import + destructure.
 const { chain } = streamChain as unknown as { chain: (fns: unknown[]) => NodeJS.ReadableStream };
@@ -270,15 +270,63 @@ async function main() {
     description: a.description,
     enablers: resolveRole(a.id, 'enablers', a.enablers),
     payoffs: resolveRole(a.id, 'payoffs', a.payoffs),
+    ...(a.subtypes?.length ? { subtypes: a.subtypes } : {}),
   }));
+
+  // 4c) Auto-generate typal (tribal) archetypes from the deepest creature subtypes.
+  //     There are no per-tribe oracle tags, so members are matched by creature
+  //     subtype (client-side, in scoreArchetypes); the payoff is the shared anthem
+  //     / changeling pool. Ranked like everything else by min(members, anthems).
+  const TRIBE_MIN = 60; // a tribe needs at least this many distinct owned creatures
+  const TRIBE_MAX = 12; // cap on how many tribes to surface
+  const tribeOids = new Map<string, Set<string>>();
+  for (const c of cards) {
+    for (const s of creatureSubtypes(c.typeLine)) {
+      let set = tribeOids.get(s);
+      if (!set) tribeOids.set(s, (set = new Set()));
+      set.add(c.oracleId || c.id);
+    }
+  }
+  const anthemPayoffs = resolveRole('typal', 'payoffs', ['anthem', 'keyword-anthem', 'changeling']);
+  const IRREGULAR: Record<string, string> = {
+    elf: 'Elves',
+    dwarf: 'Dwarves',
+    wolf: 'Wolves',
+    merfolk: 'Merfolk',
+    eldrazi: 'Eldrazi',
+    fungus: 'Fungi',
+  };
+  const pluralize = (sub: string): string => {
+    if (IRREGULAR[sub]) return IRREGULAR[sub];
+    const cap = sub.charAt(0).toUpperCase() + sub.slice(1);
+    return /(s|x|z|ch|sh)$/.test(sub) ? `${cap}es` : `${cap}s`;
+  };
+  const topTribes = [...tribeOids.entries()]
+    .map(([s, ids]) => [s, ids.size] as const)
+    .filter(([, n]) => n >= TRIBE_MIN)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, TRIBE_MAX);
+  for (const [sub] of topTribes) {
+    const name = pluralize(sub);
+    archetypes.push({
+      id: `typal-${sub}`,
+      name,
+      description: `Go wide with ${name} and back the tribe with anthems and lords.`,
+      enablers: [],
+      payoffs: anthemPayoffs,
+      subtypes: [sub],
+    });
+  }
 
   console.log('\nArchetypes (enabler-cards / payoff-cards):');
   for (const a of archetypes) {
-    const e = roleCardCount(a.enablers);
+    const e = a.subtypes?.length
+      ? (tribeOids.get(a.subtypes[0])?.size ?? 0) // typal: members by subtype
+      : roleCardCount(a.enablers);
     const p = roleCardCount(a.payoffs);
     console.log(
       `  ${a.name.padEnd(22)} e=${String(e).padStart(4)}  p=${String(p).padStart(4)}` +
-        `  (${a.enablers.length}+${a.payoffs.length} slugs)`,
+        `  (${a.enablers.length}+${a.payoffs.length} slugs${a.subtypes?.length ? `, ${a.subtypes.join('/')} tribe` : ''})`,
     );
   }
 
@@ -316,7 +364,16 @@ async function main() {
   if (!life || roleCardCount(life.enablers) <= roleCardCount(life.payoffs)) {
     throw new Error('Sanity check failed: lifegain should be enabler-heavy (lopsided demo)');
   }
-  console.log('Sanity checks passed (reanimate=3; aristocrats two-sided; lifegain lopsided).');
+  const typal = archetypes.filter((a) => a.subtypes?.length);
+  if (typal.length < 5) {
+    throw new Error(`Sanity check failed: expected ≥5 typal archetypes, got ${typal.length}`);
+  }
+  if (anthemPayoffs.length === 0) {
+    throw new Error('Sanity check failed: typal archetypes have no resolved anthem payoffs');
+  }
+  console.log(
+    `Sanity checks passed (reanimate=3; aristocrats two-sided; lifegain lopsided; ${typal.length} tribes).`,
+  );
 }
 
 main().catch((err) => {
