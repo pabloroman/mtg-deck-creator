@@ -6,7 +6,14 @@ import assert from 'node:assert';
 import { parseQuery } from '../src/search/parseQuery';
 import { filterCards } from '../src/search/filterCards';
 import { scoreArchetypes, synergyFor, lopsidedSide } from '../src/lib/synergy';
-import type { OwnedCard, ResolvedArchetype } from '../src/types';
+import {
+  isCommander,
+  withinIdentity,
+  identitySet,
+  listCommanders,
+  buildSkeleton,
+} from '../src/lib/commander';
+import type { Color, OwnedCard, ResolvedArchetype } from '../src/types';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => JSON.parse(fs.readFileSync(path.resolve(__dirname, p), 'utf8'));
@@ -17,6 +24,7 @@ const run = (raw: string, colors: ('W' | 'U' | 'B' | 'R' | 'G' | 'C')[] = []) =>
   const p = parseQuery(raw);
   return filterCards(cards, {
     tagSlugs: p.tagSlugs,
+    typeTerms: p.typeTerms,
     text: p.text,
     colors,
     axis: 'identity',
@@ -85,6 +93,43 @@ assert.ok(complement, 'expected an Aristocrats complement among synergy hits');
 console.log(
   `synergyFor("${sacOutlet!.name}") top:`,
   hits.slice(0, 3).map((h) => `${h.card.name} [${h.reason}]`).join(', '),
+);
+
+// ---- commander guide ----
+console.log('\n--- commander guide ---');
+const commanders = listCommanders(cards);
+assert.ok(commanders.length > 0, 'expected at least one legendary creature');
+assert.ok(commanders.every(isCommander), 'listed commanders must be legendary creatures');
+
+// prefer a 1–2 colour commander so the identity check has teeth
+const cmd =
+  commanders.find((c) => c.colorIdentity.length >= 1 && c.colorIdentity.length <= 2) ??
+  commanders[0];
+const idSet = identitySet(cmd);
+
+// an off-identity card is rejected (when the commander isn't 5-colour)
+if (idSet.size < 5) {
+  const allColors: Color[] = ['W', 'U', 'B', 'R', 'G'];
+  const missing = allColors.find((col) => !idSet.has(col))!;
+  const offColor = cards.find((c) => c.colorIdentity.includes(missing));
+  assert.ok(offColor, 'expected some card outside the commander identity');
+  assert.ok(!withinIdentity(offColor!, idSet), 'off-identity card must be rejected');
+}
+
+const skeleton = buildSkeleton(cmd, cards, archetypes);
+const lands = skeleton.find((s) => s.id === 'lands')!;
+assert.ok(lands.picks.length > 0, 'lands bucket should have picks');
+
+const allPicks = skeleton.flatMap((s) => s.picks.map((p) => p.card));
+assert.ok(allPicks.every((c) => withinIdentity(c, idSet)), 'every pick must be colour-legal');
+const cmdKey = cmd.oracleId || cmd.id;
+assert.ok(allPicks.every((c) => (c.oracleId || c.id) !== cmdKey), 'commander excluded from picks');
+const keys = allPicks.map((c) => c.oracleId || c.id);
+assert.strictEqual(new Set(keys).size, keys.length, 'a card appears in at most one bucket');
+
+console.log(
+  `commander "${cmd.name}" (${cmd.colorIdentity.join('') || 'C'}) =>`,
+  skeleton.map((s) => `${s.name}:${s.picks.length}/${s.target}`).join('  '),
 );
 
 console.log('\nAll frontend-logic checks passed.');

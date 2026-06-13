@@ -8,6 +8,7 @@ export interface OwnedCard {
   manaCost: string; // "" for lands / DFC backs
   cmc: number;
   typeLine: string;
+  oracleText: string; // rules text; DFC faces joined with "//" ('' if none)
   colors: Color[]; // [] = colorless
   colorIdentity: Color[]; // [] = colorless; primary filter axis
   rarity: string;
@@ -71,6 +72,22 @@ export interface SynergyHit {
   card: OwnedCard;
   score: number;
   reason: string;
+}
+
+/** A card placed into a commander deck skeleton, with its synergy signal. */
+export interface ScoredCard {
+  card: OwnedCard;
+  score: number; // synergy score with the commander (0 if no synergy signal)
+  reason: string; // short human reason, or '' for plain functional picks
+}
+
+/** One role bucket of a commander deck skeleton (lands, ramp, draw, …). */
+export interface DeckSection {
+  id: string;
+  name: string;
+  target: number; // recommended number of cards for this role
+  picks: ScoredCard[]; // chosen cards, best-first, capped at target
+  poolCount: number; // legal owned cards that fit this role (>= picks.length)
 }
 
 export interface CollectionData {

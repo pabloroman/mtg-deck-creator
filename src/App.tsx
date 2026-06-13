@@ -15,14 +15,16 @@ import { CardModal } from './components/CardModal';
 import { ResultSummary } from './components/ResultSummary';
 import { ArchetypeDashboard } from './components/ArchetypeDashboard';
 import { ArchetypeDetail } from './components/ArchetypeDetail';
+import { CommanderGuide } from './components/CommanderGuide';
 
-type View = 'browse' | 'decks';
+type View = 'browse' | 'decks' | 'commander';
 
 export default function App() {
   const { data, loading, error } = useCollection();
 
   const [view, setView] = useState<View>('browse');
   const [archetypeId, setArchetypeId] = useState<string | null>(null);
+  const [commander, setCommander] = useState<OwnedCard | null>(null);
   const [query, setQuery] = useState('');
   const [colors, setColors] = useState<ColorFilterKey[]>([]);
   const [axis, setAxis] = useState<ColorAxis>('identity');
@@ -127,7 +129,7 @@ export default function App() {
                   MTG Collection <span className="text-sky-400">Browser</span>
                 </h1>
                 <div className="inline-flex rounded-lg bg-white/5 p-0.5 text-sm ring-1 ring-white/10">
-                  {(['browse', 'decks'] as const).map((v) => (
+                  {(['browse', 'decks', 'commander'] as const).map((v) => (
                     <button
                       key={v}
                       type="button"
@@ -139,7 +141,7 @@ export default function App() {
                         view === v ? 'bg-sky-500/20 text-sky-200' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      {v === 'browse' ? 'Browse' : 'Decks'}
+                      {v === 'browse' ? 'Browse' : v === 'decks' ? 'Decks' : 'Commander'}
                     </button>
                   ))}
                 </div>
@@ -255,6 +257,16 @@ export default function App() {
           ) : (
             <ArchetypeDashboard scores={scores} onSelect={setArchetypeId} />
           ))}
+
+        {data && view === 'commander' && (
+          <CommanderGuide
+            cards={data.cards}
+            archetypes={data.archetypes}
+            commander={commander}
+            onPickCommander={setCommander}
+            onSelectCard={setSelected}
+          />
+        )}
       </main>
 
       {selected && data && (

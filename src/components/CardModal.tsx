@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { OwnedCard, ResolvedArchetype, TagIndexEntry } from '../types';
 import { synergyFor } from '../lib/synergy';
+import { SynergyList } from './SynergyList';
 
 interface Props {
   card: OwnedCard;
@@ -127,33 +128,7 @@ export function CardModal({
               <h3 className="mb-2 mt-5 text-sm font-semibold uppercase tracking-wide text-zinc-400">
                 Synergizes with
               </h3>
-              <div data-testid="synergy-list" className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {synergy.map((hit) => (
-                  <button
-                    key={hit.card.id}
-                    type="button"
-                    onClick={() => onSelectCard(hit.card)}
-                    className="flex items-center gap-2 rounded-lg p-1.5 text-left ring-1 ring-white/10 hover:bg-white/5 hover:ring-sky-500/40"
-                  >
-                    {hit.card.image ? (
-                      <img
-                        src={hit.card.image}
-                        alt=""
-                        loading="lazy"
-                        className="h-12 w-9 shrink-0 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="h-12 w-9 shrink-0 rounded bg-zinc-800" />
-                    )}
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-zinc-100">
-                        {hit.card.name}
-                      </span>
-                      <span className="block truncate text-xs text-zinc-400">{hit.reason}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <SynergyList items={synergy} onSelect={onSelectCard} testId="synergy-list" />
             </>
           )}
         </div>

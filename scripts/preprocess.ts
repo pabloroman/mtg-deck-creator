@@ -50,6 +50,7 @@ interface ScryImageUris {
 interface ScryCardFace {
   image_uris?: ScryImageUris;
   mana_cost?: string;
+  oracle_text?: string;
 }
 interface ScryCard {
   id: string;
@@ -65,6 +66,7 @@ interface ScryCard {
   set_name?: string;
   collector_number?: string;
   layout?: string;
+  oracle_text?: string;
   image_uris?: ScryImageUris;
   card_faces?: ScryCardFace[];
 }
@@ -145,6 +147,14 @@ async function main() {
     const imageBack = c.card_faces?.[1]?.image_uris?.normal;
     if (!image) imageless++;
 
+    // Single-faced cards carry oracle_text at the top level; multi-faced cards
+    // carry it per face (joined with a // divider, matching the printed card).
+    const oracleText =
+      c.oracle_text ??
+      (c.card_faces?.length
+        ? c.card_faces.map((f) => f.oracle_text ?? '').filter(Boolean).join('\n//\n')
+        : '');
+
     const tags = oidToSlugs.get(c.oracle_id ?? '');
     cards.push({
       id: c.id,
@@ -153,6 +163,7 @@ async function main() {
       manaCost: c.mana_cost ?? c.card_faces?.[0]?.mana_cost ?? '',
       cmc: c.cmc ?? 0,
       typeLine: c.type_line ?? '',
+      oracleText,
       colors: (c.colors ?? []) as Color[],
       colorIdentity: (c.color_identity ?? []) as Color[],
       rarity: c.rarity ?? '',
