@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
-import type { OwnedCard, TagIndexEntry } from '../types';
+import { useEffect, useMemo, useState } from 'react';
+import type { OwnedCard, ResolvedArchetype, TagIndexEntry } from '../types';
+import { synergyFor } from '../lib/synergy';
 
 interface Props {
   card: OwnedCard;
   tagMeta: Map<string, TagIndexEntry>;
+  allCards: OwnedCard[];
+  archetypes: ResolvedArchetype[];
   onClose: () => void;
   onPickTag: (slug: string) => void;
+  onSelectCard: (card: OwnedCard) => void;
 }
 
 /** Strip markdown links like [text](url) -> text for plain rendering. */
@@ -13,8 +17,21 @@ function stripMd(s: string): string {
   return s.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
 }
 
-export function CardModal({ card, tagMeta, onClose, onPickTag }: Props) {
+export function CardModal({
+  card,
+  tagMeta,
+  allCards,
+  archetypes,
+  onClose,
+  onPickTag,
+  onSelectCard,
+}: Props) {
   const [showBack, setShowBack] = useState(false);
+
+  const synergy = useMemo(
+    () => synergyFor(card, allCards, archetypes, 8),
+    [card, allCards, archetypes],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -103,6 +120,41 @@ export function CardModal({ card, tagMeta, onClose, onPickTag }: Props) {
                 );
               })}
             </div>
+          )}
+
+          {synergy.length > 0 && (
+            <>
+              <h3 className="mb-2 mt-5 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                Synergizes with
+              </h3>
+              <div data-testid="synergy-list" className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {synergy.map((hit) => (
+                  <button
+                    key={hit.card.id}
+                    type="button"
+                    onClick={() => onSelectCard(hit.card)}
+                    className="flex items-center gap-2 rounded-lg p-1.5 text-left ring-1 ring-white/10 hover:bg-white/5 hover:ring-sky-500/40"
+                  >
+                    {hit.card.image ? (
+                      <img
+                        src={hit.card.image}
+                        alt=""
+                        loading="lazy"
+                        className="h-12 w-9 shrink-0 rounded object-cover"
+                      />
+                    ) : (
+                      <div className="h-12 w-9 shrink-0 rounded bg-zinc-800" />
+                    )}
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-zinc-100">
+                        {hit.card.name}
+                      </span>
+                      <span className="block truncate text-xs text-zinc-400">{hit.reason}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -8,4 +8,6 @@ const base = process.env.DEPLOY_TARGET === 'gh-pages' ? '/mtg-deck-creator/' : '
 export default defineConfig({
   base,
   plugins: [react()],
+  server: { port: 5180 },
+  preview: { port: 5180 },
 });

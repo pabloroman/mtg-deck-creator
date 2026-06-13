@@ -67,7 +67,7 @@ export function SearchBar({ query, setQuery, tags }: Props) {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={onKeyDown}
-        placeholder="Search by name, or otag:reanimate …"
+        placeholder="Search by name, t:cat, or otag:reanimate …"
         spellCheck={false}
         autoComplete="off"
         className="w-full rounded-xl bg-[#11141c] px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400"

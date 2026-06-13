@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CollectionData, OwnedCard, TagIndexEntry } from '../types';
+import type { CollectionData, OwnedCard, ResolvedArchetype, TagIndexEntry } from '../types';
 
 interface State {
   data: CollectionData | null;
@@ -18,9 +18,9 @@ export function useCollection(): State {
       if (!res.ok) throw new Error(`Failed to load ${file} (HTTP ${res.status})`);
       return res.json();
     };
-    Promise.all([get('cards.json'), get('tags.json')])
-      .then(([cards, tags]: [OwnedCard[], TagIndexEntry[]]) =>
-        setState({ data: { cards, tags }, loading: false, error: null }),
+    Promise.all([get('cards.json'), get('tags.json'), get('archetypes.json')])
+      .then(([cards, tags, archetypes]: [OwnedCard[], TagIndexEntry[], ResolvedArchetype[]]) =>
+        setState({ data: { cards, tags, archetypes }, loading: false, error: null }),
       )
       .catch((err: unknown) =>
         setState({ data: null, loading: false, error: err instanceof Error ? err.message : String(err) }),

@@ -1,22 +1,35 @@
 import { useMemo, useState } from 'react';
 import { useCollection } from './data/useCollection';
-import { parseQuery, appendTag, tagPrefixOf } from './search/parseQuery';
+import { parseQuery, appendTag, tagPrefixOf, typePrefixOf } from './search/parseQuery';
 import { filterCards, type ColorAxis, type ColorMatch } from './search/filterCards';
+import { groupPrintings } from './search/groupPrintings';
+import { scoreArchetypes } from './lib/synergy';
+import { orderRarities } from './lib/rarity';
 import type { ColorFilterKey } from './lib/mana';
 import type { OwnedCard, TagIndexEntry } from './types';
 import { SearchBar } from './components/SearchBar';
 import { ColorFilter } from './components/ColorFilter';
+import { CollectionFilters } from './components/CollectionFilters';
 import { CardGrid } from './components/CardGrid';
 import { CardModal } from './components/CardModal';
 import { ResultSummary } from './components/ResultSummary';
+import { ArchetypeDashboard } from './components/ArchetypeDashboard';
+import { ArchetypeDetail } from './components/ArchetypeDetail';
+
+type View = 'browse' | 'decks';
 
 export default function App() {
   const { data, loading, error } = useCollection();
 
+  const [view, setView] = useState<View>('browse');
+  const [archetypeId, setArchetypeId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [colors, setColors] = useState<ColorFilterKey[]>([]);
   const [axis, setAxis] = useState<ColorAxis>('identity');
   const [match, setMatch] = useState<ColorMatch>('subset');
+  const [rarities, setRarities] = useState<string[]>([]);
+  const [minQuantity, setMinQuantity] = useState(0);
+  const [group, setGroup] = useState(false);
   const [selected, setSelected] = useState<OwnedCard | null>(null);
 
   const parsed = useMemo(() => parseQuery(query), [query]);
@@ -27,24 +40,57 @@ export default function App() {
     return m;
   }, [data]);
 
+  const availableRarities = useMemo(
+    () => orderRarities((data?.cards ?? []).map((c) => c.rarity)),
+    [data],
+  );
+
   const filtered = useMemo(() => {
     if (!data) return [];
-    return filterCards(data.cards, {
+    // 1. per-printing filters (tag, text, color, rarity)
+    let list = filterCards(data.cards, {
       tagSlugs: parsed.tagSlugs,
+      typeTerms: parsed.typeTerms,
       text: parsed.text,
       colors,
       axis,
       match,
+      rarities,
     });
-  }, [data, parsed, colors, axis, match]);
+    // 2. optionally collapse printings of the same card (sums copies)
+    if (group) list = groupPrintings(list);
+    // 3. min-copies filter on the effective (per-printing or summed) quantity
+    if (minQuantity > 0) list = list.filter((c) => c.quantity >= minQuantity);
+    return list;
+  }, [data, parsed, colors, axis, match, rarities, group, minQuantity]);
 
-  const hasFilters = parsed.tagSlugs.length > 0 || parsed.text.length > 0 || colors.length > 0;
+  const scores = useMemo(
+    () => (data ? scoreArchetypes(data.cards, data.archetypes) : []),
+    [data],
+  );
+  const selectedScore = useMemo(
+    () => scores.find((s) => s.archetype.id === archetypeId) ?? null,
+    [scores, archetypeId],
+  );
+
+  const hasFilters =
+    parsed.tagSlugs.length > 0 ||
+    parsed.typeTerms.length > 0 ||
+    parsed.text.length > 0 ||
+    colors.length > 0 ||
+    rarities.length > 0 ||
+    minQuantity > 0;
 
   const toggleColor = (key: ColorFilterKey) =>
     setColors((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]));
 
+  const toggleRarity = (r: string) =>
+    setRarities((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
+
+  // picking a tag (chip in the modal) always lands on the filtered browse view
   const addTag = (slug: string) => {
     setQuery((q) => appendTag(q, slug));
+    setView('browse');
     setSelected(null);
   };
 
@@ -59,61 +105,128 @@ export default function App() {
         .join(' '),
     );
 
+  const removeType = (term: string) =>
+    setQuery((q) =>
+      q
+        .split(/\s+/)
+        .filter((tok) => {
+          const pref = typePrefixOf(tok);
+          return !(pref && tok.slice(pref.length).toLowerCase() === term);
+        })
+        .join(' '),
+    );
+
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0d0f14]/95 backdrop-blur">
         <div className="mx-auto max-w-[1600px] px-4 py-3">
           <div className="flex flex-col gap-3">
-            <div className="flex items-baseline justify-between gap-4">
-              <h1 className="text-lg font-bold text-white">
-                MTG Collection <span className="text-sky-400">Browser</span>
-              </h1>
-              {data && <ResultSummary filtered={filtered} totalCards={data.cards.length} hasFilters={hasFilters} />}
-            </div>
-
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="lg:max-w-xl lg:flex-1">
-                <SearchBar query={query} setQuery={setQuery} tags={data?.tags ?? []} />
-              </div>
-              <ColorFilter
-                selected={colors}
-                onToggle={toggleColor}
-                axis={axis}
-                onAxisChange={setAxis}
-                match={match}
-                onMatchChange={setMatch}
-              />
-            </div>
-
-            {parsed.tagSlugs.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {parsed.tagSlugs.map((slug) => {
-                  const meta = tagMeta.get(slug);
-                  const known = meta !== undefined;
-                  return (
-                    <span
-                      key={slug}
-                      title={!known ? 'No card in your collection has this tag' : meta?.description ?? ''}
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
-                        known
-                          ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
-                          : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <h1 className="text-lg font-bold text-white">
+                  MTG Collection <span className="text-sky-400">Browser</span>
+                </h1>
+                <div className="inline-flex rounded-lg bg-white/5 p-0.5 text-sm ring-1 ring-white/10">
+                  {(['browse', 'decks'] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        setView(v);
+                        if (v === 'decks') setArchetypeId(null);
+                      }}
+                      className={`rounded-md px-3 py-1 font-medium transition ${
+                        view === v ? 'bg-sky-500/20 text-sky-200' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      otag:{slug}
-                      {known && <span className="text-zinc-500">· {meta!.count}</span>}
-                      <button
-                        type="button"
-                        onClick={() => removeTag(slug)}
-                        className="ml-0.5 text-zinc-400 hover:text-white"
-                        aria-label={`Remove ${slug}`}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  );
-                })}
+                      {v === 'browse' ? 'Browse' : 'Decks'}
+                    </button>
+                  ))}
+                </div>
               </div>
+              {data && view === 'browse' && (
+                <ResultSummary filtered={filtered} totalCards={data.cards.length} hasFilters={hasFilters} />
+              )}
+            </div>
+
+            {view === 'browse' && (
+              <>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                  <div className="lg:max-w-xl lg:flex-1">
+                    <SearchBar query={query} setQuery={setQuery} tags={data?.tags ?? []} />
+                  </div>
+                  <ColorFilter
+                    selected={colors}
+                    onToggle={toggleColor}
+                    axis={axis}
+                    onAxisChange={setAxis}
+                    match={match}
+                    onMatchChange={setMatch}
+                  />
+                </div>
+
+                <CollectionFilters
+                  availableRarities={availableRarities}
+                  rarities={rarities}
+                  onToggleRarity={toggleRarity}
+                  minQuantity={minQuantity}
+                  onMinQuantity={setMinQuantity}
+                  groupPrintings={group}
+                  onToggleGroup={() => setGroup((g) => !g)}
+                />
+
+                {parsed.tagSlugs.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {parsed.tagSlugs.map((slug) => {
+                      const meta = tagMeta.get(slug);
+                      const known = meta !== undefined;
+                      return (
+                        <span
+                          key={slug}
+                          title={!known ? 'No card in your collection has this tag' : meta?.description ?? ''}
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
+                            known
+                              ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
+                              : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
+                          }`}
+                        >
+                          otag:{slug}
+                          {known && <span className="text-zinc-500">· {meta!.count}</span>}
+                          <button
+                            type="button"
+                            onClick={() => removeTag(slug)}
+                            className="ml-0.5 text-zinc-400 hover:text-white"
+                            aria-label={`Remove ${slug}`}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {parsed.typeTerms.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {parsed.typeTerms.map((term) => (
+                      <span
+                        key={term}
+                        className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300 ring-1 ring-violet-500/30"
+                      >
+                        t:{term}
+                        <button
+                          type="button"
+                          onClick={() => removeType(term)}
+                          className="ml-0.5 text-zinc-400 hover:text-white"
+                          aria-label={`Remove type ${term}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -127,15 +240,32 @@ export default function App() {
             <div className="mt-2 text-sm text-zinc-500">Did you run <code>npm run preprocess</code>?</div>
           </div>
         )}
-        {data && <CardGrid cards={filtered} onSelect={setSelected} />}
+
+        {data && view === 'browse' && <CardGrid cards={filtered} onSelect={setSelected} />}
+
+        {data &&
+          view === 'decks' &&
+          (selectedScore ? (
+            <ArchetypeDetail
+              score={selectedScore}
+              cards={data.cards}
+              onBack={() => setArchetypeId(null)}
+              onSelectCard={setSelected}
+            />
+          ) : (
+            <ArchetypeDashboard scores={scores} onSelect={setArchetypeId} />
+          ))}
       </main>
 
-      {selected && (
+      {selected && data && (
         <CardModal
           card={selected}
           tagMeta={tagMeta}
+          allCards={data.cards}
+          archetypes={data.archetypes}
           onClose={() => setSelected(null)}
           onPickTag={addTag}
+          onSelectCard={setSelected}
         />
       )}
     </div>

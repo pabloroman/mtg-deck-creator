@@ -1,13 +1,16 @@
 # MTG Collection Browser
 
-A single-page app to browse the Magic: The Gathering cards you own and filter them by
-Scryfall **oracle tags** (e.g. `otag:reanimate`) and by **color** — so you can quickly check
-whether your collection has enough cards for a deck archetype you want to build.
+A single-page app for the Magic: The Gathering cards you own. Two views:
 
-Built with **Vite + React + TypeScript + Tailwind**. All filtering runs client-side over a
+- **Browse** — filter your cards by Scryfall **oracle tags** (e.g. `otag:reanimate`) and **color**.
+- **Decks** — a **synergy recommendation engine**: ranks the deck archetypes your collection best
+  supports (by how many enablers *and* payoffs you own), and suggests cards that pair well together.
+
+Built with **Vite + React + TypeScript + Tailwind**. All filtering and scoring runs client-side over a
 small, pre-built dataset of just your collection (~6k cards) — no backend.
 
-![screenshot](docs/screenshot.png)
+![browse view](docs/screenshot.png)
+![decks view](docs/screenshot-decks.png)
 
 ## How it works
 
@@ -20,10 +23,14 @@ Three source files are joined once, at build time, into two small JSON files the
 | `oracle-tags*.json` | Scryfall oracle tags. `taggings[].oracle_id` links tags to cards. |
 
 The join chain is: **ManaBox `Scryfall ID` → `default-cards.id` → `oracle_id` → oracle tags.**
-Output lands in `public/data/cards.json` (~3.5 MB) and `public/data/tags.json` (~0.3 MB), which
-are committed and served statically.
+Output lands in `public/data/cards.json` (~3.5 MB), `public/data/tags.json` (~0.3 MB), and
+`public/data/archetypes.json` (~5 KB), which are committed and served statically.
 
 > The 547 MB `default-cards` file is **streamed** during preprocessing, so memory stays low.
+
+The build also resolves the **synergy ontology** (`src/lib/ontology.ts`) against the Scryfall oracle-tag
+**DAG**: each archetype role references hub or exact tag slugs, which preprocessing expands to every
+descendant slug present in your collection (the DAG itself is never shipped). See *Synergy recommendations*.
 
 ## Quick start
 
@@ -37,7 +44,7 @@ npm install
 
 # 2. Build the static dataset (re-run whenever the sources change)
 npm run preprocess
-#    -> writes public/data/cards.json + tags.json, asserts reanimate=3
+#    -> writes public/data/cards.json + tags.json + archetypes.json; runs sanity asserts
 
 # 3. Run the app
 npm run dev          # http://localhost:5173
@@ -55,7 +62,33 @@ Other scripts: `npm run build` (typecheck + production build to `dist/`), `npm r
   - *Identity* (default, EDH-relevant) vs *Colors* axis.
   - *Subset* (default): card's colors ⊆ selected — "playable in a deck of these colors".
   - *Any*: card shares at least one selected color.
-- Click any card for a detail modal (flip button for double-faced cards, full tag list).
+- Click any card for a detail modal (flip button for double-faced cards, full tag list,
+  **Synergizes with** suggestions).
+
+## Synergy recommendations (Decks view)
+
+Switch to **Decks** for the recommendation engine. It models a synergy as an **enabler → payoff**
+relationship: an *enabler* produces a resource or condition (a sacrifice outlet, self-mill, a token
+maker) and a *payoff* rewards it (death triggers, reanimation, anthems). An **archetype** bundles an
+enabler set with a payoff set.
+
+- **Dashboard** ranks archetypes by *paired synergy depth* — the engine is `min(enablers, payoffs)`,
+  so owning **both halves** matters. A deep but unpaired bench only nudges the score, and an archetype
+  whose thin side is genuinely scarce is flagged (e.g. *"Deep in enablers, thin on payoffs"*).
+- **Detail** (click an archetype) groups your owned cards into **Enablers** and **Payoffs**, with a
+  color-identity sub-filter to scope to a buildable color combination.
+- **Synergizes with** (in any card's modal) ranks the owned cards that pair best with it, each with a
+  short reason. Curated enabler↔payoff relations rank highest; weighted (TF-IDF) overlap of
+  non-cosmetic tags catches synergies the ontology doesn't name.
+
+**Editing the ontology:** archetypes live in [`src/lib/ontology.ts`](src/lib/ontology.ts) as `ARCHETYPES`.
+Each role lists tag slugs — reference a *hub* slug (e.g. `sacrifice-outlet`) to pull its whole DAG
+subtree, or an exact leaf slug. `npm run preprocess` warns on any slug that resolves to zero owned
+cards, so the ontology stays honest. Cosmetic/structural tags (`alliteration`, `cycle-*`, `*-vanilla`)
+are listed in the same file and excluded from synergy signal.
+
+Pure scoring logic lives in [`src/lib/synergy.ts`](src/lib/synergy.ts) (`scoreArchetypes`, `synergyFor`)
+and is unit-checked by `npm run verify`.
 
 ## Deployment
 
@@ -79,6 +112,8 @@ and not present in CI).
 
 ## Roadmap
 
-- Synergy/recommendation engine: analyze the collection (tag co-occurrence across owned cards)
-  to suggest archetypes and good card pairings you already own. The tag graph
-  (`parent_ids`/`child_ids` in the oracle-tags source) is available to power this.
+- ✅ **Synergy/recommendation engine** — archetype dashboard + card-level "synergizes with" (see above).
+- **Build-around seed:** pick a commander/seed card → assemble a deck skeleton from your collection
+  (the implied archetype plus your best ramp/draw/removal in that color identity). Reuses the same engine.
+- **Synergy pairs feed:** a discovery feed of notable two-card combos already in your collection.
+- Tune the ontology: more archetypes, weighted taggings, and per-archetype "support" roles.

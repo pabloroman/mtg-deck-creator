@@ -6,10 +6,12 @@ export type ColorMatch = 'subset' | 'any';
 
 export interface FilterOptions {
   tagSlugs: string[];
+  typeTerms: string[]; // type-line substrings, AND-ed together ([] = no type filter)
   text: string;
   colors: ColorFilterKey[]; // selected color toggles ([] = no color filter)
   axis: ColorAxis;
   match: ColorMatch;
+  rarities: string[]; // selected rarity values ([] = no rarity filter)
 }
 
 /** The color keys a card occupies on the chosen axis ('C' for colorless). */
@@ -18,16 +20,23 @@ export function cardColorKeys(card: OwnedCard, axis: ColorAxis): ColorFilterKey[
   return arr.length ? (arr as ColorFilterKey[]) : ['C'];
 }
 
-/** Pure filter: tag (AND) ∧ name substring ∧ color. */
+/** Pure filter: tag (AND) ∧ type (AND) ∧ name substring ∧ color ∧ rarity. */
 export function filterCards(cards: OwnedCard[], opts: FilterOptions): OwnedCard[] {
-  const { tagSlugs, text, colors, axis, match } = opts;
+  const { tagSlugs, typeTerms, text, colors, axis, match, rarities } = opts;
   const colorSet = new Set(colors);
+  const raritySet = new Set(rarities);
 
   return cards.filter((card) => {
     for (const slug of tagSlugs) {
       if (!card.tags.includes(slug)) return false;
     }
+    if (typeTerms.length) {
+      const typeLine = card.typeLine.toLowerCase();
+      for (const term of typeTerms) if (!typeLine.includes(term)) return false;
+    }
     if (text && !card.name.toLowerCase().includes(text)) return false;
+
+    if (raritySet.size && !raritySet.has(card.rarity)) return false;
 
     if (colorSet.size) {
       const keys = cardColorKeys(card, axis);

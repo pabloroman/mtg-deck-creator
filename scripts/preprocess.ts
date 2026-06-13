@@ -14,7 +14,8 @@ import Papa from 'papaparse';
 import streamChain from 'stream-chain';
 import streamJson from 'stream-json';
 import streamArrayMod from 'stream-json/streamers/StreamArray';
-import type { Color, OwnedCard, TagIndexEntry } from '../src/types';
+import type { Color, OwnedCard, ResolvedArchetype, TagIndexEntry } from '../src/types';
+import { ARCHETYPES } from '../src/lib/ontology';
 
 // stream-* packages are CommonJS; under Node ESM use default import + destructure.
 const { chain } = streamChain as unknown as { chain: (fns: unknown[]) => NodeJS.ReadableStream };
@@ -68,10 +69,13 @@ interface ScryCard {
   card_faces?: ScryCardFace[];
 }
 interface OracleTag {
+  id?: string;
   slug: string;
   label: string;
   description?: string | null;
   aliases?: string[];
+  child_ids?: string[]; // DAG edges (reference other tags' id)
+  parent_ids?: string[];
   taggings?: { oracle_id: string; weight?: string }[];
 }
 
@@ -88,7 +92,9 @@ async function main() {
   const rawTags: OracleTag[] = JSON.parse(fs.readFileSync(tagsPath, 'utf8'));
   const oidToSlugs = new Map<string, Set<string>>();
   const tagMeta = new Map<string, OracleTag>();
+  const byId = new Map<string, OracleTag>(); // for DAG traversal (child_ids -> id)
   for (const t of rawTags) {
+    if (t.id) byId.set(t.id, t);
     if (!t.slug) continue;
     tagMeta.set(t.slug, t);
     for (const tg of t.taggings ?? []) {
@@ -194,23 +200,105 @@ async function main() {
     })
     .sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug));
 
+  // 4b) Resolve the synergy ontology through the tag DAG (build-only — the DAG
+  //     itself is never shipped). Each archetype role slug is expanded to all its
+  //     descendant slugs, then intersected with slugs present in the collection.
+  const presentSlugs = new Set(slugToOids.keys());
+
+  /** All descendant slugs of a hub slug (incl. itself), via child_ids. */
+  const descendantSlugs = (slug: string): Set<string> | null => {
+    const root = tagMeta.get(slug);
+    if (!root || !root.id) return null; // not in the taxonomy
+    const out = new Set<string>();
+    const stack: string[] = [root.id];
+    const seen = new Set<string>();
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const t = byId.get(id);
+      if (!t) continue;
+      if (t.slug) out.add(t.slug);
+      for (const c of t.child_ids ?? []) stack.push(c);
+    }
+    return out;
+  };
+
+  const resolveRole = (archId: string, role: string, slugs: string[]): string[] => {
+    const acc = new Set<string>();
+    for (const slug of slugs) {
+      const desc = descendantSlugs(slug);
+      if (desc === null) {
+        console.warn(`  ! [${archId}.${role}] unknown tag '${slug}' (not in taxonomy)`);
+        continue;
+      }
+      let added = 0;
+      for (const s of desc) {
+        if (presentSlugs.has(s)) {
+          acc.add(s);
+          added++;
+        }
+      }
+      if (added === 0) console.warn(`  ! [${archId}.${role}] '${slug}' resolves to 0 owned cards`);
+    }
+    return [...acc].sort();
+  };
+
+  /** Distinct owned cards (by oracle_id) matching any of the given slugs. */
+  const roleCardCount = (slugs: string[]): number => {
+    const oids = new Set<string>();
+    for (const s of slugs) for (const oid of slugToOids.get(s) ?? []) oids.add(oid);
+    return oids.size;
+  };
+
+  const archetypes: ResolvedArchetype[] = ARCHETYPES.map((a) => ({
+    id: a.id,
+    name: a.name,
+    description: a.description,
+    enablers: resolveRole(a.id, 'enablers', a.enablers),
+    payoffs: resolveRole(a.id, 'payoffs', a.payoffs),
+  }));
+
+  console.log('\nArchetypes (enabler-cards / payoff-cards):');
+  for (const a of archetypes) {
+    const e = roleCardCount(a.enablers);
+    const p = roleCardCount(a.payoffs);
+    console.log(
+      `  ${a.name.padEnd(22)} e=${String(e).padStart(4)}  p=${String(p).padStart(4)}` +
+        `  (${a.enablers.length}+${a.payoffs.length} slugs)`,
+    );
+  }
+
   // 5) Write outputs
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(OUT_DIR, 'cards.json'), JSON.stringify(cards));
   fs.writeFileSync(path.join(OUT_DIR, 'tags.json'), JSON.stringify(tags));
+  fs.writeFileSync(path.join(OUT_DIR, 'archetypes.json'), JSON.stringify(archetypes));
 
   const reanimate = cards.filter((c) => c.tags.includes('reanimate')).length;
   console.log(
-    `\nWrote ${cards.length} cards, ${tags.length} tags. reanimate=${reanimate}`,
+    `\nWrote ${cards.length} cards, ${tags.length} tags, ${archetypes.length} archetypes. reanimate=${reanimate}`,
   );
   const sizeMb = (p: string) =>
     (fs.statSync(path.join(OUT_DIR, p)).size / 1e6).toFixed(2) + ' MB';
-  console.log(`  cards.json ${sizeMb('cards.json')} | tags.json ${sizeMb('tags.json')}`);
+  console.log(
+    `  cards.json ${sizeMb('cards.json')} | tags.json ${sizeMb('tags.json')}` +
+      ` | archetypes.json ${sizeMb('archetypes.json')}`,
+  );
 
+  // Sanity checks — fail loudly on a bad run.
   if (reanimate !== 3) {
     throw new Error(`Sanity check failed: expected reanimate=3, got ${reanimate}`);
   }
-  console.log('Sanity check passed (reanimate=3).');
+  const aristo = archetypes.find((a) => a.id === 'aristocrats');
+  if (!aristo || !aristo.enablers.length || !aristo.payoffs.length) {
+    throw new Error('Sanity check failed: aristocrats must have ≥1 enabler and ≥1 payoff');
+  }
+  const life = archetypes.find((a) => a.id === 'lifegain');
+  if (!life || roleCardCount(life.enablers) <= roleCardCount(life.payoffs)) {
+    throw new Error('Sanity check failed: lifegain should be enabler-heavy (lopsided demo)');
+  }
+  console.log('Sanity checks passed (reanimate=3; aristocrats two-sided; lifegain lopsided).');
 }
 
 main().catch((err) => {

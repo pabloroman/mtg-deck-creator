@@ -6,6 +6,7 @@
   "description": "Browse and filter an MTG collection by Scryfall oracle tags and color.",
   "scripts": {
     "preprocess": "tsx scripts/preprocess.ts",
+    "verify": "tsx scripts/verify.ts",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",

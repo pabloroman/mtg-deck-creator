@@ -44,6 +44,14 @@ export function CardTile({ card, onSelect }: Props) {
             foil
           </span>
         )}
+        {card.printingCount !== undefined && card.printingCount > 1 && (
+          <span
+            className="rounded-md bg-sky-500/80 px-1.5 py-0.5 text-xs font-semibold text-white"
+            title={`${card.printingCount} printings combined`}
+          >
+            {card.printingCount}p
+          </span>
+        )}
       </div>
       <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/70 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-300">
         {card.set}
