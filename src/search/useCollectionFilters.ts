@@ -102,6 +102,12 @@ export function applyCollectionFilters(
     list = [...list].sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
   } else if (f.sort === 'cmc') {
     list = [...list].sort((a, b) => a.cmc - b.cmc || a.name.localeCompare(b.name));
+  } else if (f.sort === 'edhrec') {
+    // lower rank = more played; unranked cards sort to the end
+    list = [...list].sort(
+      (a, b) =>
+        (a.edhrecRank ?? Infinity) - (b.edhrecRank ?? Infinity) || a.name.localeCompare(b.name),
+    );
   }
   return list;
 }

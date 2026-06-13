@@ -67,6 +67,12 @@ assert.ok(pauper.length < allCards.length, 'pauperOnly should exclude some cards
 assert.ok(pauper.every((c) => c.pauperLegal), 'every pauperOnly result must be Pauper-legal');
 console.log(`pauperOnly => ${pauper.length}/${allCards.length} cards`);
 
+// 2d) edhrec_rank is captured for the bulk of the collection (drives the EDHREC sort)
+const ranked = cards.filter((c) => typeof c.edhrecRank === 'number');
+assert.ok(ranked.length > cards.length / 2, 'expected most cards to carry an edhrecRank');
+assert.ok(ranked.every((c) => c.edhrecRank! >= 0), 'edhrecRank must be a non-negative number');
+console.log(`edhrecRank present on ${ranked.length}/${cards.length} cards`);
+
 // 3) tag + color (subset, identity): reanimate cards whose identity ⊆ {B}
 const reanimateB = run('otag:reanimate', ['B']);
 console.log(

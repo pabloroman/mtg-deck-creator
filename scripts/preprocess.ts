@@ -69,6 +69,7 @@ interface ScryCard {
   oracle_text?: string;
   keywords?: string[]; // top-level; covers all faces (e.g. ["Flying","Trample"])
   legalities?: Record<string, string>; // format -> 'legal' | 'not_legal' | 'banned' | 'restricted'
+  edhrec_rank?: number; // EDHREC popularity rank (lower = more played); absent if unranked
   image_uris?: ScryImageUris;
   card_faces?: ScryCardFace[];
 }
@@ -180,6 +181,7 @@ async function main() {
       tags: tags ? [...tags].sort() : [],
       keywords: c.keywords ?? [],
       pauperLegal: c.legalities?.pauper === 'legal',
+      ...(typeof c.edhrec_rank === 'number' ? { edhrecRank: c.edhrec_rank } : {}),
     });
   }
   cards.sort((a, b) => a.name.localeCompare(b.name));

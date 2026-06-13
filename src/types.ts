@@ -23,6 +23,7 @@ export interface OwnedCard {
   tags: string[]; // oracle tag slugs ([] if untagged)
   keywords: string[]; // MTG keyword abilities, raw Scryfall display strings ([] if none)
   pauperLegal: boolean; // legal in the Pauper format (legalities.pauper === 'legal')
+  edhrecRank?: number; // EDHREC popularity rank (lower = more played); absent if unranked
   printingCount?: number; // set only when printings are grouped (see groupPrintings)
 }
 
