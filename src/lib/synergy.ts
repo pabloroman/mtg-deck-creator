@@ -9,9 +9,6 @@ import { isCosmetic } from './ontology';
 
 // --- tuning constants ---
 const SURPLUS_W = 0.1; // surplus is only a minor tiebreaker; engine dominates
-const COMPLEMENT_W = 3; // enabler <-> payoff of the same archetype (strongest signal)
-const THEME_W = 1; // same role in the same archetype
-const OVERLAP_CAP = 1.5; // max contribution from generic tag overlap
 const LOPSIDED_BALANCE = 0.34; // ratio below which an archetype is "lopsided"
 const LOPSIDED_MIN = 60; // ...and only if the thin side is genuinely scarce
 
@@ -98,17 +95,38 @@ function colorCompatible(a: OwnedCard, b: OwnedCard): boolean {
   return b.colorIdentity.some((c) => set.has(c));
 }
 
+/** Cards related to a selected card, split by the kind of relationship. */
+export interface RelatedCards {
+  /** Complementary combo pieces: they fill the role the selected card sets up
+   *  (an outlet's death-trigger payoffs, a payoff's enablers, …). */
+  engine: SynergyHit[];
+  /** Functional substitutes: cards with overlapping effects / the same role. */
+  similar: SynergyHit[];
+}
+
+const COLOR_BONUS = 0.3; // minor tiebreak: cards that could share a deck identity
+
 /**
- * Rank the owned cards that best synergize with `selected`, each with a short,
- * human reason. Curated enabler<->payoff relations dominate; weighted (TF-IDF)
- * overlap of non-cosmetic tags catches synergies the ontology doesn't name.
+ * Find the owned cards related to `selected`, split into two lists:
+ *
+ *  - `engine`  — the curated enabler<->payoff complement: cards that fill the
+ *    *opposite* role the selected card sets up (e.g. a sacrifice outlet's
+ *    death-trigger payoffs). Cards that merely duplicate the selected card's
+ *    *own* role are deliberately excluded here — they're substitutes, not an
+ *    engine. Ranked by idf-weighted strength of the complementary tags, so a
+ *    real payoff beats one that only carries a common, generic payoff tag.
+ *  - `similar` — functional substitutes: weighted (TF-IDF) overlap of
+ *    non-cosmetic tags, catching same-effect cards the ontology doesn't name.
+ *
+ * A card appears in at most one list (engine wins). Each list is best-first and
+ * capped at `limit`.
  */
-export function synergyFor(
+export function relatedCards(
   selected: OwnedCard,
   cards: OwnedCard[],
   archetypes: ResolvedArchetype[],
   limit = 12,
-): SynergyHit[] {
+): RelatedCards {
   // Precompute the selected card's archetype roles (as fast slug sets).
   const roles = cardRoles(selected, archetypes).map((r) => ({
     name: r.archetype.name,
@@ -119,7 +137,7 @@ export function synergyFor(
   }));
 
   const selTags = new Set(selected.tags.filter((t) => !isCosmetic(t)));
-  if (roles.length === 0 && selTags.size === 0) return [];
+  if (roles.length === 0 && selTags.size === 0) return { engine: [], similar: [] };
 
   // Document frequency over non-cosmetic tags, for idf weighting.
   const df = new Map<string, number>();
@@ -131,40 +149,41 @@ export function synergyFor(
   const N = cards.length;
   const idf = (t: string): number => Math.log(N / ((df.get(t) ?? 0) + 1));
 
-  const selKey = cardKey(selected);
-  const seen = new Set<string>([selKey]);
-  const hits: SynergyHit[] = [];
+  const seen = new Set<string>([cardKey(selected)]);
+  const engine: SynergyHit[] = [];
+  const similar: SynergyHit[] = [];
 
   for (const cand of cards) {
     const key = cardKey(cand);
     if (seen.has(key)) continue; // de-dupe printings + skip self
 
-    // 1) curated archetype relations
-    let relScore = 0;
-    let bestReason = '';
-    let bestRel = 0;
+    // 1) curated archetype relations: is the candidate a complement (opposite
+    //    role) and/or a duplicate of the selected card's own role?
+    let complementStrength = 0; // idf-weighted sum of complementary tags
+    let sharesRole = false; // candidate fills the SAME role as selected
+    let reason = '';
+    let bestComp = 0;
     for (const r of roles) {
       const candE = hasAny(cand.tags, r.enablers);
       const candP = hasAny(cand.tags, r.payoffs);
-      if (!candE && !candP) continue;
-      const complement = (r.selEnabler && candP) || (r.selPayoff && candE);
-      if (complement) {
-        relScore += COMPLEMENT_W;
-        if (COMPLEMENT_W > bestRel) {
-          bestRel = COMPLEMENT_W;
-          bestReason =
-            r.selEnabler && candP ? `feeds your ${r.name} payoff` : `${r.name} enabler for this`;
-        }
-      } else {
-        relScore += THEME_W;
-        if (THEME_W > bestRel) {
-          bestRel = THEME_W;
-          bestReason = `shares the ${r.name} theme`;
+      if ((r.selEnabler && candE) || (r.selPayoff && candP)) sharesRole = true;
+      // The complement of an enabler is a payoff, and vice versa. Weight each
+      // matching tag by idf so a distinctive payoff outranks a generic one.
+      const complementTags = r.selEnabler && candP ? r.payoffs : r.selPayoff && candE ? r.enablers : null;
+      if (complementTags) {
+        let s = 0;
+        for (const t of cand.tags) if (complementTags.has(t)) s += idf(t);
+        if (s > 0) {
+          complementStrength += s;
+          if (s > bestComp) {
+            bestComp = s;
+            reason = r.selEnabler ? `feeds your ${r.name} payoff` : `${r.name} enabler for this`;
+          }
         }
       }
     }
 
-    // 2) weighted overlap of non-cosmetic tags
+    // 2) weighted overlap of non-cosmetic tags (the substitute signal)
     let overlap = 0;
     let shared = 0;
     for (const t of cand.tags) {
@@ -173,18 +192,27 @@ export function synergyFor(
         shared++;
       }
     }
-    const overlapScore = Math.min(overlap / 6, OVERLAP_CAP);
 
-    const score = relScore + overlapScore + (colorCompatible(selected, cand) ? 0.3 : 0);
-    if (score <= 0) continue;
-    if (!bestReason) {
-      if (shared === 0) continue; // nothing meaningful in common
-      bestReason = `shares ${shared} tag${shared > 1 ? 's' : ''}`;
+    const colorBonus = colorCompatible(selected, cand) ? COLOR_BONUS : 0;
+
+    if (complementStrength > 0 && !sharesRole) {
+      seen.add(key);
+      engine.push({ card: cand, score: complementStrength + colorBonus, reason });
+    } else if (shared > 0) {
+      seen.add(key);
+      similar.push({
+        card: cand,
+        score: overlap + colorBonus,
+        reason: `similar effect · shares ${shared} tag${shared > 1 ? 's' : ''}`,
+      });
     }
-    seen.add(key);
-    hits.push({ card: cand, score, reason: bestReason });
   }
 
-  hits.sort((a, b) => b.score - a.score);
-  return hits.slice(0, limit);
+  const rank = (a: SynergyHit, b: SynergyHit): number =>
+    b.score - a.score ||
+    b.card.quantity - a.card.quantity ||
+    a.card.name.localeCompare(b.card.name);
+  engine.sort(rank);
+  similar.sort(rank);
+  return { engine: engine.slice(0, limit), similar: similar.slice(0, limit) };
 }

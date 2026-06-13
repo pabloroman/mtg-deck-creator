@@ -1,6 +1,6 @@
 import type { Color, DeckSection, OwnedCard, ResolvedArchetype, ScoredCard } from '../types';
 import { groupPrintings } from '../search/groupPrintings';
-import { synergyFor } from './synergy';
+import { relatedCards } from './synergy';
 
 /** Collapse multiple printings of the same card to one logical card. */
 const cardKey = (c: OwnedCard): string => c.oracleId || c.id;
@@ -108,10 +108,18 @@ export function buildSkeleton(
   const ckey = cardKey(commander);
   const pool = cards.filter((c) => withinIdentity(c, idSet) && cardKey(c) !== ckey);
 
-  // Synergy ranking over the legal pool (synergyFor dedupes printings by oracleId).
-  const ranked = synergyFor(commander, pool, archetypes, pool.length);
+  // Synergy ranking over the legal pool (relatedCards dedupes printings by
+  // oracleId). True engine partners (the commander's payoffs / fodder) are
+  // boosted above mere substitutes so the deck favours payoffs over redundant
+  // copies of an effect; `similar` keeps the bucket populated for commanders
+  // whose theme isn't in the curated ontology.
+  const ENGINE_BOOST = 100;
+  const rel = relatedCards(commander, pool, archetypes, pool.length);
   const sig = new Map<string, { score: number; reason: string }>();
-  for (const h of ranked) sig.set(cardKey(h.card), { score: h.score, reason: h.reason });
+  for (const h of rel.similar) sig.set(cardKey(h.card), { score: h.score, reason: h.reason });
+  for (const h of rel.engine) {
+    sig.set(cardKey(h.card), { score: ENGINE_BOOST + h.score, reason: h.reason });
+  }
 
   const scored = (c: OwnedCard): ScoredCard => {
     const s = sig.get(cardKey(c));

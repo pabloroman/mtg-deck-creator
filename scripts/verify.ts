@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { parseQuery } from '../src/search/parseQuery';
 import { filterCards } from '../src/search/filterCards';
-import { scoreArchetypes, synergyFor, lopsidedSide } from '../src/lib/synergy';
+import { scoreArchetypes, relatedCards, lopsidedSide } from '../src/lib/synergy';
 import {
   isCommander,
   withinIdentity,
@@ -81,18 +81,31 @@ console.log(
   `reanimator e=${reanim.e} p=${reanim.p} -> lopsided:${lopsidedSide(reanim)}`,
 );
 
-// 7) synergyFor on a sacrifice outlet surfaces an aristocrats payoff via a complement
-const aristoDef = archetypes.find((a) => a.id === 'aristocrats')!;
-const enablerSet = new Set(aristoDef.enablers);
-const sacOutlet = cards.find((c) => c.tags.some((t) => enablerSet.has(t)));
-assert.ok(sacOutlet, 'expected at least one aristocrats enabler in the collection');
-const hits = synergyFor(sacOutlet!, cards, archetypes);
-assert.ok(hits.length > 0, 'synergyFor should return hits for an enabler');
-const complement = hits.find((h) => h.reason.includes('Aristocrats'));
-assert.ok(complement, 'expected an Aristocrats complement among synergy hits');
+// 7) relatedCards on a pure sacrifice outlet: engine partners are its aristocrats
+//    payoffs (opposite role), similar cards are other outlets; the lists are disjoint
+const reap = cards.find((c) => c.name === "Altar's Reap");
+assert.ok(reap, "expected Altar's Reap (a pure sacrifice outlet) in the collection");
+const { engine, similar } = relatedCards(reap!, cards, archetypes);
+assert.ok(engine.length > 0, 'engine partners expected for a sacrifice outlet');
+assert.ok(
+  engine.every((h) => h.reason.includes('Aristocrats')),
+  'engine partners of an outlet should be Aristocrats complements',
+);
+// an outlet's engine partners must not themselves be the same kind of outlet
+assert.ok(
+  engine.every((h) => !h.card.tags.includes('sacrifice-outlet-creature')),
+  'engine partners must fill the opposite role, not duplicate the outlet',
+);
+const eKeys = new Set(engine.map((h) => h.card.oracleId || h.card.id));
+assert.ok(
+  similar.every((h) => !eKeys.has(h.card.oracleId || h.card.id)),
+  'engine and similar lists must be disjoint',
+);
 console.log(
-  `synergyFor("${sacOutlet!.name}") top:`,
-  hits.slice(0, 3).map((h) => `${h.card.name} [${h.reason}]`).join(', '),
+  `relatedCards("Altar's Reap") engine:`,
+  engine.slice(0, 3).map((h) => h.card.name).join(', '),
+  '| similar:',
+  similar.slice(0, 3).map((h) => h.card.name).join(', '),
 );
 
 // ---- commander guide ----

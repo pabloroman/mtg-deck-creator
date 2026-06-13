@@ -10,14 +10,17 @@ interface Props {
   items: Item[];
   onSelect: (card: OwnedCard) => void;
   testId?: string;
+  /** Show the per-card reason line. Off where the surrounding context (e.g. a
+   *  tab label) already names the relationship. Defaults to on. */
+  showReason?: boolean;
 }
 
 /**
- * A responsive list of small card tiles (image + name + reason), used both in
- * the card modal's "Synergizes with" section and the commander guide's theme
- * bucket.
+ * A responsive list of small card tiles (image + name + reason), used for the
+ * card modal's "Engine partners" / "Similar cards" sections and the commander
+ * guide's theme bucket.
  */
-export function SynergyList({ items, onSelect, testId }: Props) {
+export function SynergyList({ items, onSelect, testId, showReason = true }: Props) {
   return (
     <div data-testid={testId} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
       {items.map((hit) => (
@@ -39,7 +42,9 @@ export function SynergyList({ items, onSelect, testId }: Props) {
           )}
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium text-zinc-100">{hit.card.name}</span>
-            {hit.reason && <span className="block truncate text-xs text-zinc-400">{hit.reason}</span>}
+            {showReason && hit.reason && (
+              <span className="block truncate text-xs text-zinc-400">{hit.reason}</span>
+            )}
           </span>
         </button>
       ))}
