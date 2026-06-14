@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useCollection } from './data/useCollection';
+import { useDecks } from './data/useDecks';
 import {
   parseQuery,
   appendTag,
@@ -11,6 +12,7 @@ import {
 import { useCollectionFilters, applyCollectionFilters } from './search/useCollectionFilters';
 import { scoreArchetypes } from './lib/synergy';
 import { orderRarities } from './lib/rarity';
+import { buildCardIndex, cardKey, copyCap } from './lib/deck';
 import type { OwnedCard, TagIndexEntry } from './types';
 import { SearchBar } from './components/SearchBar';
 import { FilterBar } from './components/FilterBar';
@@ -20,8 +22,11 @@ import { ResultSummary } from './components/ResultSummary';
 import { ArchetypeDashboard } from './components/ArchetypeDashboard';
 import { ArchetypeDetail } from './components/ArchetypeDetail';
 import { CommanderGuide } from './components/CommanderGuide';
+import { DeckList } from './components/DeckList';
+import { DeckEditor } from './components/DeckEditor';
+import { NewDeckDialog } from './components/NewDeckDialog';
 
-type View = 'browse' | 'decks' | 'commander';
+type View = 'browse' | 'decks' | 'commander' | 'build';
 
 export default function App() {
   const { data, loading, error } = useCollection();
@@ -30,9 +35,43 @@ export default function App() {
   const [archetypeId, setArchetypeId] = useState<string | null>(null);
   const [commander, setCommander] = useState<OwnedCard | null>(null);
   const [selected, setSelected] = useState<OwnedCard | null>(null);
+  const [openDeckId, setOpenDeckId] = useState<string | null>(null);
+  const [newDeckOpen, setNewDeckOpen] = useState(false);
+  const decks = useDecks();
   const f = useCollectionFilters();
 
   const parsed = useMemo(() => parseQuery(f.query), [f.query]);
+
+  // oracleId -> representative card (with total owned quantity); drives deck building.
+  const cardIndex = useMemo(
+    () => (data ? buildCardIndex(data.cards) : new Map<string, OwnedCard>()),
+    [data],
+  );
+
+  const openDeck = useMemo(
+    () => decks.decks.find((d) => d.id === openDeckId) ?? null,
+    [decks.decks, openDeckId],
+  );
+
+  // Add a card to a deck, capped at the copies owned (and the format limit).
+  const addCardToDeck = (deckId: string, oracleId: string) => {
+    const deck = decks.decks.find((d) => d.id === deckId);
+    const card = cardIndex.get(oracleId);
+    if (!deck || !card) return;
+    decks.addCard(deckId, oracleId, { cap: copyCap(card, deck.format, card.quantity) });
+  };
+
+  const quickAdd = (card: OwnedCard) => {
+    if (decks.activeDeckId) addCardToDeck(decks.activeDeckId, cardKey(card));
+  };
+
+  const handleCreateDeck = (input: Parameters<typeof decks.createDeck>[0]) => {
+    const id = decks.createDeck(input);
+    // Created from a card's "+ New deck…": drop that card straight in.
+    if (selected) addCardToDeck(id, cardKey(selected));
+    setNewDeckOpen(false);
+    if (view === 'build') setOpenDeckId(id);
+  };
 
   const tagMeta = useMemo(() => {
     const m = new Map<string, TagIndexEntry>();
@@ -256,19 +295,26 @@ export default function App() {
                   MTG Collection <span className="text-sky-400">Browser</span>
                 </h1>
                 <div className="inline-flex rounded-lg bg-white/5 p-0.5 text-sm ring-1 ring-white/10">
-                  {(['browse', 'decks', 'commander'] as const).map((v) => (
+                  {(['browse', 'decks', 'commander', 'build'] as const).map((v) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => {
                         setView(v);
                         if (v === 'decks') setArchetypeId(null);
+                        if (v === 'build') setOpenDeckId(null);
                       }}
                       className={`rounded-md px-3 py-1 font-medium transition ${
                         view === v ? 'bg-sky-500/20 text-sky-200' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      {v === 'browse' ? 'Browse' : v === 'decks' ? 'Decks' : 'Commander'}
+                      {v === 'browse'
+                        ? 'Browse'
+                        : v === 'decks'
+                          ? 'Archetypes'
+                          : v === 'commander'
+                            ? 'Commander'
+                            : 'My Decks'}
                     </button>
                   ))}
                 </div>
@@ -302,7 +348,13 @@ export default function App() {
           </div>
         )}
 
-        {data && view === 'browse' && <CardGrid cards={filtered} onSelect={setSelected} />}
+        {data && view === 'browse' && (
+          <CardGrid
+            cards={filtered}
+            onSelect={setSelected}
+            onQuickAdd={decks.activeDeckId ? quickAdd : undefined}
+          />
+        )}
 
         {data &&
           view === 'decks' &&
@@ -326,6 +378,41 @@ export default function App() {
             onSelectCard={setSelected}
           />
         )}
+
+        {data &&
+          view === 'build' &&
+          (openDeck ? (
+            <DeckEditor
+              key={openDeck.id}
+              deck={openDeck}
+              cards={data.cards}
+              index={cardIndex}
+              isActive={decks.activeDeckId === openDeck.id}
+              onBack={() => setOpenDeckId(null)}
+              onRename={(name) => decks.renameDeck(openDeck.id, name)}
+              onSetFormat={(format) => decks.setFormat(openDeck.id, format)}
+              onSetCommander={(oid) => decks.setCommander(openDeck.id, oid)}
+              onAdjust={(oid, delta, cap) => decks.addCard(openDeck.id, oid, { delta, cap })}
+              onSetActive={() =>
+                decks.setActiveDeck(decks.activeDeckId === openDeck.id ? null : openDeck.id)
+              }
+              onDelete={() => {
+                decks.deleteDeck(openDeck.id);
+                setOpenDeckId(null);
+              }}
+              onSelectCard={setSelected}
+            />
+          ) : (
+            <DeckList
+              decks={decks.decks}
+              index={cardIndex}
+              activeDeckId={decks.activeDeckId}
+              onOpen={setOpenDeckId}
+              onNew={() => setNewDeckOpen(true)}
+              onSetActive={decks.setActiveDeck}
+              onDelete={decks.deleteDeck}
+            />
+          ))}
       </main>
 
       {selected && data && (
@@ -337,6 +424,19 @@ export default function App() {
           onClose={() => setSelected(null)}
           onPickTag={addTag}
           onSelectCard={setSelected}
+          decks={decks.decks}
+          activeDeckId={decks.activeDeckId}
+          cardIndex={cardIndex}
+          onAddToDeck={addCardToDeck}
+          onRequestNewDeck={() => setNewDeckOpen(true)}
+        />
+      )}
+
+      {newDeckOpen && data && (
+        <NewDeckDialog
+          cards={data.cards}
+          onCancel={() => setNewDeckOpen(false)}
+          onCreate={handleCreateDeck}
         />
       )}
     </div>

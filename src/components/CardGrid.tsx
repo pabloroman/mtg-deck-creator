@@ -7,9 +7,11 @@ const PAGE = 80;
 interface Props {
   cards: OwnedCard[];
   onSelect: (card: OwnedCard) => void;
+  /** Forwarded to each tile; enables the hover "+" quick-add when set. */
+  onQuickAdd?: (card: OwnedCard) => void;
 }
 
-export function CardGrid({ cards, onSelect }: Props) {
+export function CardGrid({ cards, onSelect, onQuickAdd }: Props) {
   const [count, setCount] = useState(PAGE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -46,7 +48,7 @@ export function CardGrid({ cards, onSelect }: Props) {
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
         {cards.slice(0, count).map((card) => (
-          <CardTile key={card.id} card={card} onSelect={onSelect} />
+          <CardTile key={card.id} card={card} onSelect={onSelect} onQuickAdd={onQuickAdd} />
         ))}
       </div>
       {count < cards.length && (

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { OwnedCard, ResolvedArchetype, TagIndexEntry } from '../types';
+import type { CardIndex, Deck } from '../lib/deck';
 import { relatedCards } from '../lib/synergy';
 import { SynergyList } from './SynergyList';
+import { AddToDeckMenu } from './AddToDeckMenu';
 
 interface Props {
   card: OwnedCard;
@@ -11,6 +13,12 @@ interface Props {
   onClose: () => void;
   onPickTag: (slug: string) => void;
   onSelectCard: (card: OwnedCard) => void;
+  // Deck building — all optional; the menu only renders when wired up.
+  decks?: Deck[];
+  activeDeckId?: string | null;
+  cardIndex?: CardIndex;
+  onAddToDeck?: (deckId: string, oracleId: string) => void;
+  onRequestNewDeck?: () => void;
 }
 
 /** Strip markdown links like [text](url) -> text for plain rendering. */
@@ -26,6 +34,11 @@ export function CardModal({
   onClose,
   onPickTag,
   onSelectCard,
+  decks,
+  activeDeckId,
+  cardIndex,
+  onAddToDeck,
+  onRequestNewDeck,
 }: Props) {
   const [showBack, setShowBack] = useState(false);
 
@@ -110,6 +123,19 @@ export function CardModal({
                 value={card.colorIdentity.length ? card.colorIdentity.join('') : 'Colorless'}
               />
             </dl>
+
+            {decks && cardIndex && onAddToDeck && onRequestNewDeck && (
+              <div className="mt-4">
+                <AddToDeckMenu
+                  card={card}
+                  decks={decks}
+                  activeDeckId={activeDeckId ?? null}
+                  index={cardIndex}
+                  onAdd={onAddToDeck}
+                  onRequestNewDeck={onRequestNewDeck}
+                />
+              </div>
+            )}
 
             <h3 className="mb-2 mt-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
               Oracle tags ({card.tags.length})

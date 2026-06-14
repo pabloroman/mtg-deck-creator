@@ -4,9 +4,11 @@ import type { OwnedCard } from '../types';
 interface Props {
   card: OwnedCard;
   onSelect: (card: OwnedCard) => void;
+  /** When set, a hover "+" adds the card to the active deck. */
+  onQuickAdd?: (card: OwnedCard) => void;
 }
 
-export function CardTile({ card, onSelect }: Props) {
+export function CardTile({ card, onSelect, onQuickAdd }: Props) {
   const [errored, setErrored] = useState(false);
 
   return (
@@ -53,6 +55,30 @@ export function CardTile({ card, onSelect }: Props) {
           </span>
         )}
       </div>
+      {onQuickAdd && (
+        // A span (not a button) to avoid nesting interactive elements; stops
+        // propagation so it adds to the active deck without opening the modal.
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Add ${card.name} to active deck`}
+          title="Add to active deck"
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuickAdd(card);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation();
+              e.preventDefault();
+              onQuickAdd(card);
+            }
+          }}
+          className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-sky-500 text-base font-bold leading-none text-white opacity-0 shadow transition hover:bg-sky-400 focus:opacity-100 group-hover:opacity-100"
+        >
+          +
+        </span>
+      )}
       <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/70 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-300">
         {card.set}
       </span>
