@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TagIndexEntry } from '../types';
-import { appendKeyword, appendTag, keywordPrefixOf, tagPrefixOf } from '../search/parseQuery';
+import {
+  appendKeyword,
+  appendSet,
+  appendTag,
+  keywordPrefixOf,
+  setPrefixOf,
+  tagPrefixOf,
+} from '../search/parseQuery';
 import { rankTags } from '../search/rankTags';
 import { TagAutocomplete } from './TagAutocomplete';
 
@@ -9,25 +16,36 @@ interface Props {
   setQuery: (q: string) => void;
   tags: TagIndexEntry[];
   keywords: TagIndexEntry[]; // MTG keyword abilities, shaped as TagIndexEntry for reuse
+  sets: TagIndexEntry[]; // collection sets (slug = code, label = set name), shaped for reuse
 }
 
-export function SearchBar({ query, setQuery, tags, keywords }: Props) {
+export function SearchBar({ query, setQuery, tags, keywords, sets }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const [escaped, setEscaped] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Which prefix is the cursor currently completing? Tag wins over keyword.
+  // Which prefix is the cursor currently completing? Tag wins over keyword over set.
   const lastToken = /(\S*)$/.exec(query)?.[1] ?? '';
   const tagPref = tagPrefixOf(lastToken);
   const kwPref = !tagPref ? keywordPrefixOf(lastToken) : null;
-  const mode: 'tag' | 'keyword' | null = tagPref ? 'tag' : kwPref ? 'keyword' : null;
-  const activePref = tagPref ?? kwPref;
+  const setPref = !tagPref && !kwPref ? setPrefixOf(lastToken) : null;
+  const mode: 'tag' | 'keyword' | 'set' | null = tagPref
+    ? 'tag'
+    : kwPref
+      ? 'keyword'
+      : setPref
+        ? 'set'
+        : null;
+  const activePref = tagPref ?? kwPref ?? setPref;
   const partial = activePref !== null ? lastToken.slice(activePref.length) : null;
 
   const suggestions = useMemo(
-    () => (partial !== null ? rankTags(mode === 'keyword' ? keywords : tags, partial) : []),
-    [tags, keywords, mode, partial],
+    () =>
+      partial !== null
+        ? rankTags(mode === 'keyword' ? keywords : mode === 'set' ? sets : tags, partial)
+        : [],
+    [tags, keywords, sets, mode, partial],
   );
   const open = focused && partial !== null && !escaped;
 
@@ -36,7 +54,13 @@ export function SearchBar({ query, setQuery, tags, keywords }: Props) {
   }, [partial]);
 
   const pick = (slug: string) => {
-    setQuery(mode === 'keyword' ? appendKeyword(query, slug) : appendTag(query, slug));
+    const next =
+      mode === 'keyword'
+        ? appendKeyword(query, slug)
+        : mode === 'set'
+          ? appendSet(query, slug)
+          : appendTag(query, slug);
+    setQuery(next);
     setEscaped(false);
     inputRef.current?.focus();
   };
@@ -72,7 +96,7 @@ export function SearchBar({ query, setQuery, tags, keywords }: Props) {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={onKeyDown}
-        placeholder="Search by name, t:cat, kw:flying, or otag:reanimate …"
+        placeholder="Search by name, t:cat, kw:flying, set:woe, or otag:reanimate …"
         spellCheck={false}
         autoComplete="off"
         className="w-full rounded-xl bg-[#11141c] px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400"

@@ -14,6 +14,7 @@ export interface FilterOptions {
   axis: ColorAxis;
   match: ColorMatch;
   rarities: string[]; // selected rarity values ([] = no rarity filter)
+  setCodes: string[]; // set codes, OR-ed together ([] = no set filter)
   pauperOnly?: boolean; // when true, keep only Pauper-legal cards
 }
 
@@ -23,14 +24,17 @@ export function cardColorKeys(card: OwnedCard, axis: ColorAxis): ColorFilterKey[
   return arr.length ? (arr as ColorFilterKey[]) : ['C'];
 }
 
-/** Pure filter: tag (AND) ∧ type (AND) ∧ keyword (AND) ∧ name substring ∧ color ∧ rarity. */
+/** Pure filter: tag (AND) ∧ type (AND) ∧ keyword (AND) ∧ name substring ∧ color ∧ rarity ∧ set. */
 export function filterCards(cards: OwnedCard[], opts: FilterOptions): OwnedCard[] {
-  const { tagSlugs, typeTerms, keywords, text, colors, axis, match, rarities, pauperOnly } = opts;
+  const { tagSlugs, typeTerms, keywords, text, colors, axis, match, rarities, setCodes, pauperOnly } =
+    opts;
   const colorSet = new Set(colors);
   const raritySet = new Set(rarities);
+  const setCodeSet = new Set(setCodes);
 
   return cards.filter((card) => {
     if (pauperOnly && !card.pauperLegal) return false;
+    if (setCodeSet.size && !setCodeSet.has(card.set.toLowerCase())) return false;
     for (const slug of tagSlugs) {
       if (!card.tags.includes(slug)) return false;
     }

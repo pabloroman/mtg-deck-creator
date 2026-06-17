@@ -94,6 +94,7 @@ export function applyCollectionFilters(
     axis: f.axis,
     match: f.match,
     rarities: f.rarities,
+    setCodes: parsed?.setCodes ?? [],
     pauperOnly: f.pauperOnly,
   });
   if (f.group) list = groupPrintings(list);

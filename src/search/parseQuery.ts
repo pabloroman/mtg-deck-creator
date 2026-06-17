@@ -2,12 +2,14 @@ export interface ParsedQuery {
   tagSlugs: string[]; // AND-ed together
   typeTerms: string[]; // type-line substrings, AND-ed together
   keywordSlugs: string[]; // MTG keyword-ability slugs, AND-ed together
+  setCodes: string[]; // set codes, OR-ed together
   text: string; // lowercased name substring
 }
 
 const TAG_PREFIXES = ['otag:', 'tag:'];
 const TYPE_PREFIXES = ['type:', 't:'];
 const KEYWORD_PREFIXES = ['kw:', 'keyword:'];
+const SET_PREFIXES = ['set:', 's:'];
 
 /** Returns the matching tag prefix for a token, or null. */
 export function tagPrefixOf(token: string): string | null {
@@ -27,27 +29,36 @@ export function keywordPrefixOf(token: string): string | null {
   return KEYWORD_PREFIXES.find((p) => lower.startsWith(p)) ?? null;
 }
 
+/** Returns the matching set prefix for a token, or null. `set:` wins over `s:`. */
+export function setPrefixOf(token: string): string | null {
+  const lower = token.toLowerCase();
+  return SET_PREFIXES.find((p) => lower.startsWith(p)) ?? null;
+}
+
 /** Normalize a keyword ability to its slug form, e.g. "First strike" -> "first-strike". */
 export function keywordSlug(s: string): string {
   return s.toLowerCase().replace(/\s+/g, '-');
 }
 
 /**
- * "otag:reanimate t:cat kw:flying dragon"
- *   -> { tagSlugs: ['reanimate'], typeTerms: ['cat'], keywordSlugs: ['flying'], text: 'dragon' }
+ * "otag:reanimate t:cat kw:flying set:woe dragon"
+ *   -> { tagSlugs: ['reanimate'], typeTerms: ['cat'], keywordSlugs: ['flying'],
+ *        setCodes: ['woe'], text: 'dragon' }
  * Supports otag:/tag: for oracle tags, t:/type: for card type, kw:/keyword: for MTG
- * keyword abilities; everything else is a name search.
+ * keyword abilities, set:/s: for set code; everything else is a name search.
  */
 export function parseQuery(raw: string): ParsedQuery {
   const tokens = raw.trim().split(/\s+/).filter(Boolean);
   const tagSlugs: string[] = [];
   const typeTerms: string[] = [];
   const keywordSlugs: string[] = [];
+  const setCodes: string[] = [];
   const textParts: string[] = [];
   for (const tok of tokens) {
     const tagPref = tagPrefixOf(tok);
     const typePref = !tagPref ? typePrefixOf(tok) : null;
     const kwPref = !tagPref && !typePref ? keywordPrefixOf(tok) : null;
+    const setPref = !tagPref && !typePref && !kwPref ? setPrefixOf(tok) : null;
     if (tagPref) {
       const slug = tok.slice(tagPref.length).trim().toLowerCase();
       if (slug) tagSlugs.push(slug);
@@ -57,11 +68,14 @@ export function parseQuery(raw: string): ParsedQuery {
     } else if (kwPref) {
       const slug = tok.slice(kwPref.length).trim().toLowerCase();
       if (slug) keywordSlugs.push(slug);
+    } else if (setPref) {
+      const code = tok.slice(setPref.length).trim().toLowerCase();
+      if (code) setCodes.push(code);
     } else {
       textParts.push(tok);
     }
   }
-  return { tagSlugs, typeTerms, keywordSlugs, text: textParts.join(' ').toLowerCase() };
+  return { tagSlugs, typeTerms, keywordSlugs, setCodes, text: textParts.join(' ').toLowerCase() };
 }
 
 /**
@@ -93,4 +107,9 @@ export function appendTag(query: string, slug: string): string {
 /** Append `kw:<slug>` to a query, replacing a trailing partial keyword token if present. */
 export function appendKeyword(query: string, slug: string): string {
   return appendToken(query, slug, 'kw:', keywordPrefixOf);
+}
+
+/** Append `set:<code>` to a query, replacing a trailing partial set token if present. */
+export function appendSet(query: string, code: string): string {
+  return appendToken(query, code, 'set:', setPrefixOf);
 }

@@ -1,4 +1,5 @@
 import type { TagIndexEntry } from '../types';
+import { keywordSlug } from '../search/parseQuery';
 
 interface Props {
   suggestions: TagIndexEntry[];
@@ -39,6 +40,9 @@ export function TagAutocomplete({ suggestions, activeIndex, onPick, onHover }: P
               <span className="font-medium text-sky-300">{tag.slug}</span>
               <span className="shrink-0 text-xs text-zinc-500">{tag.count} owned</span>
             </div>
+            {tag.label && keywordSlug(tag.label) !== tag.slug && (
+              <span className="text-xs text-zinc-300">{tag.label}</span>
+            )}
             {tag.description && (
               <span className="line-clamp-2 text-xs text-zinc-400">{stripMd(tag.description)}</span>
             )}

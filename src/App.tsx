@@ -7,11 +7,13 @@ import {
   tagPrefixOf,
   typePrefixOf,
   keywordPrefixOf,
+  setPrefixOf,
   keywordSlug,
 } from './search/parseQuery';
 import { useCollectionFilters, applyCollectionFilters } from './search/useCollectionFilters';
 import { scoreArchetypes } from './lib/synergy';
 import { orderRarities } from './lib/rarity';
+import { summarizeSets } from './lib/sets';
 import { buildCardIndex, cardKey, copyCap } from './lib/deck';
 import type { OwnedCard, TagIndexEntry } from './types';
 import { SearchBar } from './components/SearchBar';
@@ -25,8 +27,9 @@ import { CommanderGuide } from './components/CommanderGuide';
 import { DeckList } from './components/DeckList';
 import { DeckEditor } from './components/DeckEditor';
 import { NewDeckDialog } from './components/NewDeckDialog';
+import { SetsDashboard } from './components/SetsDashboard';
 
-type View = 'browse' | 'decks' | 'commander' | 'build';
+type View = 'browse' | 'decks' | 'sets' | 'commander' | 'build';
 
 export default function App() {
   const { data, loading, error } = useCollection();
@@ -84,6 +87,29 @@ export default function App() {
     [data],
   );
 
+  // Per-set ownership rollup; drives the Sets page and the set: autocomplete/chips.
+  const setSummaries = useMemo(() => summarizeSets(data?.cards ?? []), [data]);
+
+  // Sets shaped as TagIndexEntry so the search box reuses rankTags + TagAutocomplete
+  // (slug = set code, label = set name, count = distinct cards owned).
+  const setIndex = useMemo<TagIndexEntry[]>(
+    () =>
+      setSummaries.map((s) => ({
+        slug: s.code,
+        label: s.name,
+        description: null,
+        aliases: [],
+        count: s.distinct,
+      })),
+    [setSummaries],
+  );
+
+  const setMeta = useMemo(() => {
+    const m = new Map<string, TagIndexEntry>();
+    for (const s of setIndex) m.set(s.slug, s);
+    return m;
+  }, [setIndex]);
+
   // Keyword-ability index derived from the loaded cards, shaped as TagIndexEntry so the
   // search box can reuse rankTags + TagAutocomplete. count = distinct owning cards (oracleId).
   const keywordIndex = useMemo<TagIndexEntry[]>(() => {
@@ -138,6 +164,7 @@ export default function App() {
     parsed.tagSlugs.length > 0 ||
     parsed.typeTerms.length > 0 ||
     parsed.keywordSlugs.length > 0 ||
+    parsed.setCodes.length > 0 ||
     parsed.text.length > 0 ||
     f.colors.length > 0 ||
     f.rarities.length > 0 ||
@@ -184,6 +211,17 @@ export default function App() {
         .join(' '),
     );
 
+  const removeSet = (code: string) =>
+    f.setQuery((q) =>
+      q
+        .split(/\s+/)
+        .filter((tok) => {
+          const pref = setPrefixOf(tok);
+          return !(pref && tok.slice(pref.length).toLowerCase() === code);
+        })
+        .join(' '),
+    );
+
   // The search box and its active-filter chips are shared by Browse and the
   // Archetypes view, so both can narrow cards by tag, type, keyword or name.
   const searchLeading = (
@@ -193,6 +231,7 @@ export default function App() {
         setQuery={f.setQuery}
         tags={data?.tags ?? []}
         keywords={keywordIndex}
+        sets={setIndex}
       />
     </div>
   );
@@ -281,6 +320,39 @@ export default function App() {
           })}
         </div>
       )}
+
+      {parsed.setCodes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {parsed.setCodes.map((code) => {
+            const meta = setMeta.get(code);
+            const known = meta !== undefined;
+            return (
+              <span
+                key={code}
+                title={
+                  known ? `${meta!.count} cards owned` : 'No card in your collection is from this set'
+                }
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
+                  known
+                    ? 'bg-teal-500/15 text-teal-300 ring-teal-500/30'
+                    : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
+                }`}
+              >
+                set:{code}
+                {known && <span className="text-zinc-500">· {meta!.label}</span>}
+                <button
+                  type="button"
+                  onClick={() => removeSet(code)}
+                  className="ml-0.5 text-zinc-400 hover:text-white"
+                  aria-label={`Remove set ${code}`}
+                >
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 
@@ -295,7 +367,7 @@ export default function App() {
                   MTG Collection <span className="text-sky-400">Browser</span>
                 </h1>
                 <div className="inline-flex rounded-lg bg-white/5 p-0.5 text-sm ring-1 ring-white/10">
-                  {(['browse', 'decks', 'commander', 'build'] as const).map((v) => (
+                  {(['browse', 'decks', 'sets', 'commander', 'build'] as const).map((v) => (
                     <button
                       key={v}
                       type="button"
@@ -312,9 +384,11 @@ export default function App() {
                         ? 'Browse'
                         : v === 'decks'
                           ? 'Archetypes'
-                          : v === 'commander'
-                            ? 'Commander'
-                            : 'My Decks'}
+                          : v === 'sets'
+                            ? 'Sets'
+                            : v === 'commander'
+                              ? 'Commander'
+                              : 'My Decks'}
                     </button>
                   ))}
                 </div>
@@ -368,6 +442,16 @@ export default function App() {
           ) : (
             <ArchetypeDashboard scores={scores} onSelect={setArchetypeId} />
           ))}
+
+        {data && view === 'sets' && (
+          <SetsDashboard
+            summaries={setSummaries}
+            onSelectSet={(code) => {
+              f.setQuery(`set:${code} `);
+              setView('browse');
+            }}
+          />
+        )}
 
         {data && view === 'commander' && (
           <CommanderGuide
