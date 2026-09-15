@@ -5,22 +5,17 @@
  *   public/data/cards.json  — one entry per owned printing, enriched with tags
  *   public/data/tags.json   — metadata for every tag present in the collection
  *
- * The 547 MB default-cards file is streamed (bounded memory). Run with:  npm run preprocess
+ * The default-cards bulk file is streamed from its .jsonl.gz (bounded memory).
+ * Run with:  npm run preprocess
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import readline from 'node:readline';
+import zlib from 'node:zlib';
 import Papa from 'papaparse';
-import streamChain from 'stream-chain';
-import streamJson from 'stream-json';
-import streamArrayMod from 'stream-json/streamers/StreamArray';
 import type { Color, OwnedCard, ResolvedArchetype, TagIndexEntry } from '../src/types';
 import { ARCHETYPES, creatureSubtypes } from '../src/lib/ontology';
-
-// stream-* packages are CommonJS; under Node ESM use default import + destructure.
-const { chain } = streamChain as unknown as { chain: (fns: unknown[]) => NodeJS.ReadableStream };
-const { parser } = streamJson as unknown as { parser: () => unknown };
-const { streamArray } = streamArrayMod as unknown as { streamArray: () => unknown };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -38,6 +33,14 @@ function findFile(prefix: string, ext: string): string {
   }
   // newest last after sort (timestamps are zero-padded)
   return path.join(DATA_DIR, matches[matches.length - 1]);
+}
+
+/** Stream a gzipped JSONL bulk file, one parsed object per line (bounded memory). */
+async function* readJsonl<T>(file: string): AsyncGenerator<T> {
+  const input = fs.createReadStream(file).pipe(zlib.createGunzip());
+  for await (const line of readline.createInterface({ input, crlfDelay: Infinity })) {
+    if (line) yield JSON.parse(line) as T;
+  }
 }
 
 // ---- Scryfall raw shapes (only the fields we use) ----
@@ -86,19 +89,20 @@ interface OracleTag {
 
 async function main() {
   const csvPath = findFile('ManaBox', '.csv');
-  const tagsPath = findFile('oracle-tags', '.json');
-  const cardsPath = findFile('default-cards', '.json');
+  const tagsPath = findFile('oracle-tags', '.jsonl.gz');
+  const cardsPath = findFile('default-cards', '.jsonl.gz');
   console.log('Sources:');
   console.log('  collection :', path.basename(csvPath));
   console.log('  cards      :', path.basename(cardsPath));
   console.log('  tags       :', path.basename(tagsPath));
 
   // 1) Tags: oracle_id -> Set<slug>, plus slug -> metadata
-  const rawTags: OracleTag[] = JSON.parse(fs.readFileSync(tagsPath, 'utf8'));
   const oidToSlugs = new Map<string, Set<string>>();
   const tagMeta = new Map<string, OracleTag>();
   const byId = new Map<string, OracleTag>(); // for DAG traversal (child_ids -> id)
-  for (const t of rawTags) {
+  let tagCount = 0;
+  for await (const t of readJsonl<OracleTag>(tagsPath)) {
+    tagCount++;
     if (t.id) byId.set(t.id, t);
     if (!t.slug) continue;
     tagMeta.set(t.slug, t);
@@ -111,7 +115,7 @@ async function main() {
       set.add(t.slug);
     }
   }
-  console.log(`Loaded ${rawTags.length} tags.`);
+  console.log(`Loaded ${tagCount} tags.`);
 
   // 2) Collection CSV: scryfall printing id -> { quantity, foil }
   const csvText = fs.readFileSync(csvPath, 'utf8');
@@ -139,9 +143,7 @@ async function main() {
   const cards: OwnedCard[] = [];
   const seen = new Set<string>();
   let imageless = 0;
-  const pipeline = chain([fs.createReadStream(cardsPath), parser(), streamArray()]);
-  for await (const { value } of pipeline as AsyncIterable<{ value: ScryCard }>) {
-    const c = value;
+  for await (const c of readJsonl<ScryCard>(cardsPath)) {
     const own = owned.get(c.id);
     if (!own || seen.has(c.id)) continue;
     seen.add(c.id);

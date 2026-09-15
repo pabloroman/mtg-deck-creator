@@ -19,14 +19,15 @@ Three source files are joined once, at build time, into two small JSON files the
 | Source (in `data/`, gitignored) | Role |
 | --- | --- |
 | `ManaBox_Collection*.csv` | Your collection (ManaBox export). `Scryfall ID` + `Quantity` + `Foil`. |
-| `default-cards*.json` | Every Scryfall printing. Joined to the collection by printing `id` (**100% match**), giving each owned card its `oracle_id`, image, colors, type, etc. |
-| `oracle-tags*.json` | Scryfall oracle tags. `taggings[].oracle_id` links tags to cards. |
+| `default-cards*.jsonl.gz` | Every Scryfall printing. Joined to the collection by printing `id` (**100% match**), giving each owned card its `oracle_id`, image, colors, type, etc. |
+| `oracle-tags*.jsonl.gz` | Scryfall oracle tags. `taggings[].oracle_id` links tags to cards. |
 
 The join chain is: **ManaBox `Scryfall ID` → `default-cards.id` → `oracle_id` → oracle tags.**
-Output lands in `public/data/cards.json` (~3.5 MB), `public/data/tags.json` (~0.3 MB), and
+Output lands in `public/data/cards.json` (~5.4 MB), `public/data/tags.json` (~0.3 MB), and
 `public/data/archetypes.json` (~5 KB), which are committed and served statically.
 
-> The 547 MB `default-cards` file is **streamed** during preprocessing, so memory stays low.
+> Scryfall serves bulk data as gzipped JSONL. Both files are **streamed straight from the `.gz`**
+> during preprocessing, so nothing is decompressed to disk and memory stays low.
 
 The build also resolves the **synergy ontology** (`src/lib/ontology.ts`) against the Scryfall oracle-tag
 **DAG**: each archetype role references hub or exact tag slugs, which preprocessing expands to every
@@ -39,8 +40,9 @@ npm install
 
 # 1. Put the three source files in ./data/  (filenames may carry timestamps)
 #    - ManaBox_Collection*.csv
-#    - default-cards*.json     (Scryfall "Default Cards" bulk data)
-#    - oracle-tags*.json       (Scryfall oracle tags export)
+#    - default-cards*.jsonl.gz (Scryfall "Default Cards" bulk data)
+#    - oracle-tags*.jsonl.gz   (Scryfall "Oracle Tags" bulk data)
+#    Both download URIs come from https://api.scryfall.com/bulk-data (jsonl_download_uri)
 
 # 2. Build the static dataset (re-run whenever the sources change)
 npm run preprocess
