@@ -42,6 +42,8 @@ export function FilterBar({ filters: f, availableRarities, leading, colorLabel }
         onToggleRarity={f.toggleRarity}
         pauperOnly={f.pauperOnly}
         onTogglePauper={f.togglePauper}
+        playableOnly={f.playableOnly}
+        onTogglePlayable={f.togglePlayable}
         minQuantity={f.minQuantity}
         onMinQuantity={f.setMinQuantity}
         groupPrintings={f.group}

@@ -162,6 +162,10 @@ export const ARCHETYPES: ArchetypeDef[] = [
   },
 ];
 
+/** Root slug of the build-generated pull-list tags (see scripts/preprocess.ts).
+ *  `playable`, `playable-substrate` and `playable-friction` all share this prefix. */
+export const PLAYABLE_TAG = 'playable';
+
 /**
  * Cosmetic / structural tags that describe a card in isolation and carry no
  * synergy signal (the loudest tags in this collection are these). Excluded from
@@ -196,7 +200,7 @@ export const COSMETIC_TAGS = new Set<string>([
 export function isCosmetic(slug: string): boolean {
   return (
     COSMETIC_TAGS.has(slug) ||
-    slug.startsWith('playable') || // synthetic pull-list tags, not Scryfall oracle tags
+    slug.startsWith(PLAYABLE_TAG) || // synthetic pull-list tags, not Scryfall oracle tags
     slug.includes('vanilla') ||
     slug.startsWith('cycle-') ||
     slug.endsWith('-errata') ||

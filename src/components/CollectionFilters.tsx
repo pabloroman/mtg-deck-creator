@@ -11,6 +11,8 @@ interface Props {
   onMinQuantity: (n: number) => void;
   pauperOnly: boolean;
   onTogglePauper: () => void;
+  playableOnly: boolean;
+  onTogglePlayable: () => void;
   groupPrintings: boolean;
   onToggleGroup: () => void;
   sort: SortKey;
@@ -39,6 +41,8 @@ export function CollectionFilters({
   onMinQuantity,
   pauperOnly,
   onTogglePauper,
+  playableOnly,
+  onTogglePlayable,
   groupPrintings,
   onToggleGroup,
   sort,
@@ -103,6 +107,22 @@ export function CollectionFilters({
         }`}
       >
         ◆ Pauper legal
+      </button>
+
+      {/* Pull-list toggle. Amber, matching the playable chips in the card detail view —
+          these tags are build-generated, not Scryfall oracle tags. */}
+      <button
+        type="button"
+        onClick={onTogglePlayable}
+        aria-pressed={playableOnly}
+        title="Show only cards on the pull list: self-contained, readable in one sentence"
+        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 transition ${
+          playableOnly
+            ? 'bg-amber-500/20 text-amber-200 ring-amber-500/40'
+            : 'bg-white/5 text-zinc-400 ring-white/10 hover:text-zinc-200'
+        }`}
+      >
+        ✦ Playable
       </button>
 
       {/* Group printings toggle */}

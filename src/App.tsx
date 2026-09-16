@@ -148,7 +148,8 @@ export default function App() {
   // archetype's Members/Payoffs lists (e.g. t:creature to see only creatures).
   const filtered = useMemo(
     () => (data ? applyCollectionFilters(data.cards, f, parsed) : []),
-    [data, parsed, f.colors, f.axis, f.match, f.rarities, f.pauperOnly, f.group, f.minQuantity, f.sort],
+    [data, parsed, f.colors, f.axis, f.match, f.rarities, f.pauperOnly, f.playableOnly, f.group,
+      f.minQuantity, f.sort],
   );
 
   const scores = useMemo(
@@ -169,6 +170,7 @@ export default function App() {
     f.colors.length > 0 ||
     f.rarities.length > 0 ||
     f.pauperOnly ||
+    f.playableOnly ||
     f.minQuantity > 0;
 
   // picking a tag (chip in the modal) always lands on the filtered browse view

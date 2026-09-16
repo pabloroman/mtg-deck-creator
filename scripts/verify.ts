@@ -67,6 +67,20 @@ assert.ok(pauper.length < allCards.length, 'pauperOnly should exclude some cards
 assert.ok(pauper.every((c) => c.pauperLegal), 'every pauperOnly result must be Pauper-legal');
 console.log(`pauperOnly => ${pauper.length}/${allCards.length} cards`);
 
+const playable = filterCards(cards, {
+  tagSlugs: [], typeTerms: [], keywords: [], text: '',
+  colors: [], axis: 'identity', match: 'subset', rarities: [], playableOnly: true,
+});
+assert.ok(playable.length > 0, 'expected some cards on the pull list');
+assert.ok(playable.length < allCards.length, 'playableOnly should exclude some cards');
+assert.ok(
+  playable.every((c) => c.tags.includes('playable')),
+  'every playableOnly result must carry the playable tag',
+);
+// The synthetic tags must stay out of synergy scoring, or 2k cards share a tag.
+assert.ok(isCosmetic('playable'), 'playable tags must be cosmetic (excluded from synergy)');
+console.log(`playableOnly => ${playable.length}/${allCards.length} cards`);
+
 // 2d) edhrec_rank is captured for the bulk of the collection (drives the EDHREC sort)
 const ranked = cards.filter((c) => typeof c.edhrecRank === 'number');
 assert.ok(ranked.length > cards.length / 2, 'expected most cards to carry an edhrecRank');
