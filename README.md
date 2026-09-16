@@ -36,7 +36,7 @@ physical collection into cards worth pulling for a deck and cards that stay in b
 
 | Tag | Meaning |
 | --- | --- |
-| `playable` | On the pull list — EDHREC rank ≤ 10000, plus the substrate add-backs below. |
+| `playable` | On the pull list — EDHREC rank ≤ 15000, plus the substrate add-backs below. |
 | `playable-substrate` | Added back by rule, not by rank: creature, evergreen keywords only, ≤ 55 chars of rules text. |
 | `playable-friction` | On the list but carries a mechanic that needs explaining or building around — review by eye. |
 

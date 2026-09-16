@@ -48,7 +48,7 @@ async function* readJsonl<T>(file: string): AsyncGenerator<T> {
 // their own and read in one sentence. EDHREC rank is the base signal, but it is a
 // Commander popularity metric and is wrong in both directions for this purpose, so
 // two corrections ride along. See the tag descriptions below.
-const PLAYABLE_RANK = 10_000; // EDHREC rank at or below which a card is "generically played"
+const PLAYABLE_RANK = 15_000; // EDHREC rank at or below which a card is "generically played"
 const SUBSTRATE_TEXT_MAX = 55; // chars of rules text a simple creature body may carry
 
 /** Evergreen keywords a card can have and still read at a glance. */
