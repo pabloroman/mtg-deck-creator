@@ -29,6 +29,27 @@ Output lands in `public/data/cards.json` (~5.4 MB), `public/data/tags.json` (~0.
 > Scryfall serves bulk data as gzipped JSONL. Both files are **streamed straight from the `.gz`**
 > during preprocessing, so nothing is decompressed to disk and memory stays low.
 
+### Playability
+
+`scripts/preprocess.ts` also injects three **synthetic tags** (not from Scryfall) used to split the
+physical collection into cards worth pulling for a deck and cards that stay in bulk:
+
+| Tag | Meaning |
+| --- | --- |
+| `playable` | On the pull list — EDHREC rank ≤ 10000, plus the substrate add-backs below. |
+| `playable-substrate` | Added back by rule, not by rank: creature, evergreen keywords only, ≤ 55 chars of rules text. |
+| `playable-friction` | On the list but carries a mechanic that needs explaining or building around — review by eye. |
+
+EDHREC rank is the base signal because popularity rewards self-contained, generically-good cards.
+It is a *Commander* metric though, and wrong in both directions here: it under-reads simple creature
+bodies (which a casual or kids' deck runs on) — hence `playable-substrate` — and over-reads
+competitive build-arounds, which nothing in the data detects, hence the `playable-friction` flag as
+a partial tell. Treat the tag as a first pass to correct, not a verdict.
+
+These slugs are excluded from synergy scoring by `isCosmetic()` in `src/lib/ontology.ts` — 2,000
+cards sharing a tag would otherwise swamp the TF-IDF similarity — and are rendered separately from
+oracle tags in the card detail view.
+
 The build also resolves the **synergy ontology** (`src/lib/ontology.ts`) against the Scryfall oracle-tag
 **DAG**: each archetype role references hub or exact tag slugs, which preprocessing expands to every
 descendant slug present in your collection (the DAG itself is never shipped). See *Synergy recommendations*.
@@ -60,6 +81,8 @@ Other scripts: `npm run build` (typecheck + production build to `dist/`), `npm r
 - **Search** by card name, or type `otag:<slug>` (also `tag:` / `t:`) for an oracle tag.
   Autocomplete suggests tags **present in your collection**, with owned counts and descriptions.
 - Multiple `otag:` filters are **AND**-ed. Click a tag chip in a card's detail view to add it.
+- **`otag:playable`** — a build-generated *pull list* for sorting the physical collection: cards
+  that stand on their own and read in one sentence. See *Playability* below.
 - **Color filter** (W/U/B/R/G/C):
   - *Identity* (default, EDH-relevant) vs *Colors* axis.
   - *Subset* (default): card's colors ⊆ selected — "playable in a deck of these colors".

@@ -66,6 +66,10 @@ export function CardModal({
     tab === 'similar' && similar.length ? 'similar' : engine.length ? 'engine' : 'similar';
   const activeItems = activeTab === 'engine' ? engine : similar;
   const hasRelated = engine.length > 0 || similar.length > 0;
+  // Pull-list tags are injected by the build, not sourced from Scryfall — keep them
+  // out of the oracle-tag list so that heading stays truthful.
+  const pullTags = card.tags.filter((t) => t.startsWith('playable'));
+  const oracleTags = card.tags.filter((t) => !t.startsWith('playable'));
 
   return (
     <div
@@ -137,14 +141,33 @@ export function CardModal({
               </div>
             )}
 
+            {pullTags.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {pullTags.map((slug) => {
+                  const meta = tagMeta.get(slug);
+                  return (
+                    <button
+                      key={slug}
+                      type="button"
+                      onClick={() => onPickTag(slug)}
+                      title={meta?.description ? stripMd(meta.description) : `otag:${slug}`}
+                      className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300 ring-1 ring-amber-500/30 hover:bg-amber-500/25"
+                    >
+                      {slug}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <h3 className="mb-2 mt-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
-              Oracle tags ({card.tags.length})
+              Oracle tags ({oracleTags.length})
             </h3>
-            {card.tags.length === 0 ? (
+            {oracleTags.length === 0 ? (
               <p className="text-sm text-zinc-500">No oracle tags for this card.</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
-                {card.tags.map((slug) => {
+                {oracleTags.map((slug) => {
                   const meta = tagMeta.get(slug);
                   return (
                     <button

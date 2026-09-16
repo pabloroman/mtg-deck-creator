@@ -196,6 +196,7 @@ export const COSMETIC_TAGS = new Set<string>([
 export function isCosmetic(slug: string): boolean {
   return (
     COSMETIC_TAGS.has(slug) ||
+    slug.startsWith('playable') || // synthetic pull-list tags, not Scryfall oracle tags
     slug.includes('vanilla') ||
     slug.startsWith('cycle-') ||
     slug.endsWith('-errata') ||

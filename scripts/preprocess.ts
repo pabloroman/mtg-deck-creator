@@ -43,6 +43,57 @@ async function* readJsonl<T>(file: string): AsyncGenerator<T> {
   }
 }
 
+// ---- Playability pass (build-only) ----
+// A first-pass "pull list" for sorting the physical collection: cards that stand on
+// their own and read in one sentence. EDHREC rank is the base signal, but it is a
+// Commander popularity metric and is wrong in both directions for this purpose, so
+// two corrections ride along. See the tag descriptions below.
+const PLAYABLE_RANK = 10_000; // EDHREC rank at or below which a card is "generically played"
+const SUBSTRATE_TEXT_MAX = 55; // chars of rules text a simple creature body may carry
+
+/** Evergreen keywords a card can have and still read at a glance. */
+const EVERGREEN = new Set([
+  'Flying', 'Trample', 'Vigilance', 'Haste', 'First strike', 'Double strike', 'Deathtouch',
+  'Lifelink', 'Menace', 'Reach', 'Defender', 'Hexproof', 'Ward', 'Flash', 'Indestructible',
+]);
+
+/** Mechanics that cost an explanation or a deck built around them. */
+const FRICTION = new Set([
+  'Morph', 'Megamorph', 'Manifest', 'Suspend', 'Emerge', 'Delirium', 'Storm', 'Cascade',
+  'Madness', 'Dredge', 'Bloodrush', 'Miracle', 'Prowl', 'Evoke', 'Escape', 'Foretell',
+  'Disturb', 'Cleave', 'Casualty', 'Bestow', 'Devour', 'Exploit', 'Soulbond', 'Unearth',
+  'Embalm', 'Eternalize', 'Spectacle', 'Adapt', 'Mutate', 'Companion', 'Hideaway',
+  'Threshold', 'Landfall', 'Metalcraft', 'Ferocious', 'Formidable',
+]);
+
+/** Synthetic tags injected into card.tags — not from Scryfall. Kept out of synergy
+ *  scoring by isCosmetic() in src/lib/ontology.ts. */
+const PLAYABLE_TAGS: OracleTag[] = [
+  {
+    slug: 'playable',
+    label: 'playable',
+    description:
+      'First-pass pull list: self-contained and readable in one sentence. EDHREC rank ' +
+      `\u2264 ${PLAYABLE_RANK}, plus simple creature bodies added back by rule. A starting ` +
+      'point to correct, not a verdict.',
+  },
+  {
+    slug: 'playable-substrate',
+    label: 'playable-substrate',
+    description:
+      'On the pull list by the add-back rule rather than by EDHREC: a creature with ' +
+      `evergreen keywords only and \u2264 ${SUBSTRATE_TEXT_MAX} characters of rules text. ` +
+      'Commander under-plays these; a kids\u2019 deck runs on them.',
+  },
+  {
+    slug: 'playable-friction',
+    label: 'playable-friction',
+    description:
+      'On the pull list but carries a mechanic that costs an explanation or a deck built ' +
+      'around it (storm, cascade, evoke\u2026). Check these by eye \u2014 most are build-arounds.',
+  },
+];
+
 // ---- Scryfall raw shapes (only the fields we use) ----
 interface ScryImageUris {
   small?: string;
@@ -193,6 +244,43 @@ async function main() {
     console.warn(`WARNING: ${missing.length} owned printings not found in default-cards.`);
   }
   if (imageless) console.warn(`WARNING: ${imageless} owned cards have no image.`);
+
+  // 3b) Playability pass. Classified per oracle_id off the best rank across printings, so
+  //     every printing of a card lands in the same bucket (the grid groups printings).
+  const bestRank = new Map<string, number>();
+  for (const c of cards) {
+    const k = c.oracleId || c.id;
+    const rank = c.edhrecRank ?? Infinity;
+    if (rank < (bestRank.get(k) ?? Infinity)) bestRank.set(k, rank);
+  }
+  const playableTags = new Map<string, string[]>(); // oracle_id -> synthetic slugs
+  for (const c of cards) {
+    const k = c.oracleId || c.id;
+    if (playableTags.has(k)) continue;
+    const core = (bestRank.get(k) ?? Infinity) <= PLAYABLE_RANK;
+    const substrate =
+      !core &&
+      c.typeLine.includes('Creature') &&
+      c.keywords.every((kw) => EVERGREEN.has(kw)) &&
+      c.oracleText.length <= SUBSTRATE_TEXT_MAX;
+    if (!core && !substrate) continue;
+    const slugs = ['playable'];
+    if (substrate) slugs.push('playable-substrate');
+    if (c.keywords.some((kw) => FRICTION.has(kw))) slugs.push('playable-friction');
+    playableTags.set(k, slugs);
+  }
+  for (const c of cards) {
+    const extra = playableTags.get(c.oracleId || c.id);
+    if (extra) c.tags = [...c.tags, ...extra].sort();
+  }
+  for (const t of PLAYABLE_TAGS) tagMeta.set(t.slug, t);
+  const nSubstrate = [...playableTags.values()].filter((v) => v.includes('playable-substrate')).length;
+  const nFriction = [...playableTags.values()].filter((v) => v.includes('playable-friction')).length;
+  console.log(
+    `Playable: ${playableTags.size} of ${bestRank.size} unique cards ` +
+      `(${((playableTags.size / bestRank.size) * 100).toFixed(0)}%)` +
+      ` \u2014 ${nSubstrate} substrate add-backs, ${nFriction} flagged for eye-review.`,
+  );
 
   // 4) Tag index for tags present in the collection (count = distinct owned cards)
   const slugToOids = new Map<string, Set<string>>();
@@ -373,6 +461,12 @@ async function main() {
   const typal = archetypes.filter((a) => a.subtypes?.length);
   if (typal.length < 5) {
     throw new Error(`Sanity check failed: expected ≥5 typal archetypes, got ${typal.length}`);
+  }
+  if (playableTags.size < 1000 || playableTags.size > bestRank.size * 0.6) {
+    throw new Error(
+      `Sanity check failed: playable=${playableTags.size} of ${bestRank.size} unique cards ` +
+        'is outside the expected 1000..60% band',
+    );
   }
   if (anthemPayoffs.length === 0) {
     throw new Error('Sanity check failed: typal archetypes have no resolved anthem payoffs');
