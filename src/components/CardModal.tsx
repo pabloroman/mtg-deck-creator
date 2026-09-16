@@ -126,6 +126,7 @@ export function CardModal({
                 label="Identity"
                 value={card.colorIdentity.length ? card.colorIdentity.join('') : 'Colorless'}
               />
+              <Field label="EDHREC rank" value={card.edhrecRank?.toLocaleString() ?? 'Unranked'} />
             </dl>
 
             {decks && cardIndex && onAddToDeck && onRequestNewDeck && (
