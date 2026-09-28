@@ -23,7 +23,8 @@ Three source files are joined once, at build time, into two small JSON files the
 | `oracle-tags*.jsonl.gz` | Scryfall oracle tags. `taggings[].oracle_id` links tags to cards. |
 
 The join chain is: **ManaBox `Scryfall ID` → `default-cards.id` → `oracle_id` → oracle tags.**
-Output lands in `public/data/cards.json` (~5.4 MB), `public/data/tags.json` (~0.3 MB), and
+Output lands in `public/data/cards.json` (~5.4 MB), `public/data/tags.json` (~0.3 MB),
+`public/data/sets.json` (release date + unique-card count per owned set, for the Sets page), and
 `public/data/archetypes.json` (~5 KB), which are committed and served statically.
 
 > Scryfall serves bulk data as gzipped JSONL. Both files are **streamed straight from the `.gz`**

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import zlib from 'node:zlib';
 import Papa from 'papaparse';
-import type { Color, OwnedCard, ResolvedArchetype, TagIndexEntry } from '../src/types';
+import type { Color, OwnedCard, ResolvedArchetype, SetInfo, TagIndexEntry } from '../src/types';
 import { ARCHETYPES, creatureSubtypes } from '../src/lib/ontology';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -119,6 +119,7 @@ interface ScryCard {
   set?: string;
   set_name?: string;
   collector_number?: string;
+  released_at?: string; // YYYY-MM-DD
   layout?: string;
   oracle_text?: string;
   keywords?: string[]; // top-level; covers all faces (e.g. ["Flying","Trample"])
@@ -194,7 +195,15 @@ async function main() {
   const cards: OwnedCard[] = [];
   const seen = new Set<string>();
   let imageless = 0;
+  // Per set: earliest release date + distinct cards (oracle ids), for the Sets page.
+  const setStats = new Map<string, { releasedAt: string; oracles: Set<string> }>();
   for await (const c of readJsonl<ScryCard>(cardsPath)) {
+    if (c.set) {
+      let st = setStats.get(c.set);
+      if (!st) setStats.set(c.set, (st = { releasedAt: c.released_at ?? '', oracles: new Set() }));
+      if (c.released_at && (!st.releasedAt || c.released_at < st.releasedAt)) st.releasedAt = c.released_at;
+      st.oracles.add(c.oracle_id ?? c.name);
+    }
     const own = owned.get(c.id);
     if (!own || seen.has(c.id)) continue;
     seen.add(c.id);
@@ -429,6 +438,12 @@ async function main() {
   fs.writeFileSync(path.join(OUT_DIR, 'cards.json'), JSON.stringify(cards));
   fs.writeFileSync(path.join(OUT_DIR, 'tags.json'), JSON.stringify(tags));
   fs.writeFileSync(path.join(OUT_DIR, 'archetypes.json'), JSON.stringify(archetypes));
+  const sets: Record<string, SetInfo> = {};
+  for (const code of new Set(cards.map((c) => c.set))) {
+    const st = setStats.get(code);
+    if (st) sets[code] = { releasedAt: st.releasedAt, total: st.oracles.size };
+  }
+  fs.writeFileSync(path.join(OUT_DIR, 'sets.json'), JSON.stringify(sets));
 
   const reanimate = cards.filter((c) => c.tags.includes('reanimate')).length;
   const flying = cards.filter((c) => c.keywords.includes('Flying')).length;

@@ -88,7 +88,7 @@ export default function App() {
   );
 
   // Per-set ownership rollup; drives the Sets page and the set: autocomplete/chips.
-  const setSummaries = useMemo(() => summarizeSets(data?.cards ?? []), [data]);
+  const setSummaries = useMemo(() => summarizeSets(data?.cards ?? [], data?.sets ?? {}), [data]);
 
   // Sets shaped as TagIndexEntry so the search box reuses rankTags + TagAutocomplete
   // (slug = set code, label = set name, count = distinct cards owned).

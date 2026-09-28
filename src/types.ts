@@ -96,8 +96,15 @@ export interface DeckSection {
   poolCount: number; // legal owned cards that fit this role (>= picks.length)
 }
 
+/** Whole-set facts from Scryfall (not just owned cards). Ships in sets.json keyed by set code. */
+export interface SetInfo {
+  releasedAt: string; // YYYY-MM-DD ('' if unknown)
+  total: number; // distinct cards (oracle ids) in the set
+}
+
 export interface CollectionData {
   cards: OwnedCard[];
   tags: TagIndexEntry[];
   archetypes: ResolvedArchetype[];
+  sets: Record<string, SetInfo>;
 }

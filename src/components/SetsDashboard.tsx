@@ -8,9 +8,10 @@ interface Props {
   onSelectSet: (code: string) => void;
 }
 
-type SetSort = 'distinct' | 'copies' | 'name';
+type SetSort = 'date' | 'distinct' | 'copies' | 'name';
 
 const SORT_OPTIONS: { value: SetSort; label: string }[] = [
+  { value: 'date', label: 'Release date' },
   { value: 'distinct', label: 'Cards owned' },
   { value: 'copies', label: 'Copies' },
   { value: 'name', label: 'Name' },
@@ -18,7 +19,7 @@ const SORT_OPTIONS: { value: SetSort; label: string }[] = [
 
 export function SetsDashboard({ summaries, onSelectSet }: Props) {
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SetSort>('distinct');
+  const [sort, setSort] = useState<SetSort>('date');
 
   const totalDistinct = useMemo(() => summaries.reduce((n, s) => n + s.distinct, 0), [summaries]);
   const totalCopies = useMemo(() => summaries.reduce((n, s) => n + s.copies, 0), [summaries]);
@@ -32,7 +33,11 @@ export function SetsDashboard({ summaries, onSelectSet }: Props) {
     if (sort === 'copies') {
       return [...list].sort((a, b) => b.copies - a.copies || a.name.localeCompare(b.name));
     }
-    return [...list].sort((a, b) => b.distinct - a.distinct || a.name.localeCompare(b.name));
+    if (sort === 'distinct') {
+      return [...list].sort((a, b) => b.distinct - a.distinct || a.name.localeCompare(b.name));
+    }
+    return list; // summaries arrive sorted by release date
+
   }, [summaries, query, sort]);
 
   return (
