@@ -100,6 +100,7 @@ export interface DeckSection {
 export interface SetInfo {
   releasedAt: string; // YYYY-MM-DD ('' if unknown)
   total: number; // distinct cards (oracle ids) in the set
+  rarities: Record<string, number>; // distinct cards in the set per rarity
 }
 
 export interface CollectionData {

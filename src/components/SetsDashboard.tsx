@@ -37,8 +37,19 @@ export function SetsDashboard({ summaries, onSelectSet }: Props) {
       return [...list].sort((a, b) => b.distinct - a.distinct || a.name.localeCompare(b.name));
     }
     return list; // summaries arrive sorted by release date
-
   }, [summaries, query, sort]);
+
+  // Release-date sort gets a header per year; other sorts are one untitled group.
+  const groups = useMemo(() => {
+    if (sort !== 'date') return [{ year: '', sets: shown }];
+    const out: { year: string; sets: SetSummary[] }[] = [];
+    for (const s of shown) {
+      const year = s.releasedAt.slice(0, 4) || 'Unknown';
+      if (out.at(-1)?.year !== year) out.push({ year, sets: [] });
+      out.at(-1)!.sets.push(s);
+    }
+    return out;
+  }, [shown, sort]);
 
   return (
     <div>
@@ -69,9 +80,23 @@ export function SetsDashboard({ summaries, onSelectSet }: Props) {
       {shown.length === 0 ? (
         <div className="py-16 text-center text-zinc-500">No sets match “{query}”.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {shown.map((s) => (
-            <SetCard key={s.code} summary={s} onSelect={onSelectSet} />
+        <div className="flex flex-col gap-6">
+          {groups.map((g) => (
+            <section key={g.year}>
+              {g.year && (
+                <h3 className="mb-2 flex items-baseline gap-2 text-lg font-semibold text-white">
+                  {g.year}
+                  <span className="text-xs font-normal text-zinc-500">
+                    {g.sets.length} {g.sets.length === 1 ? 'set' : 'sets'}
+                  </span>
+                </h3>
+              )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {g.sets.map((s) => (
+                  <SetCard key={s.code} summary={s} onSelect={onSelectSet} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}

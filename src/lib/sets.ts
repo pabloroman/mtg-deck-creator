@@ -10,7 +10,8 @@ export interface SetSummary {
   distinct: number; // distinct printings owned in this set (rows)
   copies: number; // Σ quantity across those printings
   foils: number; // printings with at least one foil copy
-  rarities: Record<string, number>; // distinct printings per rarity
+  rarities: Record<string, number>; // distinct cards (oracle ids) owned per rarity
+  rarityTotals: Record<string, number>; // distinct cards in the whole set per rarity
 }
 
 /**
@@ -20,7 +21,7 @@ export interface SetSummary {
  */
 export function summarizeSets(cards: OwnedCard[], info: Record<string, SetInfo>): SetSummary[] {
   const map = new Map<string, SetSummary>();
-  const oracles = new Map<string, Set<string>>();
+  const seen = new Set<string>(); // "set|oracle" and "set|rarity|oracle" already counted
   for (const c of cards) {
     let s = map.get(c.set);
     if (!s) {
@@ -35,17 +36,23 @@ export function summarizeSets(cards: OwnedCard[], info: Record<string, SetInfo>)
         copies: 0,
         foils: 0,
         rarities: {},
+        rarityTotals: i?.rarities ?? {},
       };
       map.set(c.set, s);
-      oracles.set(c.set, new Set());
     }
-    oracles.get(c.set)!.add(c.oracleId || c.name);
     s.distinct += 1;
     s.copies += c.quantity;
     if (c.foil) s.foils += 1;
-    s.rarities[c.rarity] = (s.rarities[c.rarity] ?? 0) + 1;
+    const oid = c.oracleId || c.name;
+    if (!seen.has(`${c.set}|${oid}`)) {
+      seen.add(`${c.set}|${oid}`);
+      s.unique += 1;
+    }
+    if (!seen.has(`${c.set}|${c.rarity}|${oid}`)) {
+      seen.add(`${c.set}|${c.rarity}|${oid}`);
+      s.rarities[c.rarity] = (s.rarities[c.rarity] ?? 0) + 1;
+    }
   }
-  for (const s of map.values()) s.unique = oracles.get(s.code)!.size;
   return [...map.values()].sort(
     (a, b) => b.releasedAt.localeCompare(a.releasedAt) || a.name.localeCompare(b.name),
   );

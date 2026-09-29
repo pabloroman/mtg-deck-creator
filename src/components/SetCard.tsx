@@ -6,9 +6,18 @@ interface Props {
   onSelect: (code: string) => void;
 }
 
+/** Rounded owned/total as a 0–100 percentage (0 when the total is unknown). */
+function percent(owned: number, total: number): number {
+  return total ? Math.min(100, Math.round((owned / total) * 100)) : 0;
+}
+
 export function SetCard({ summary, onSelect }: Props) {
-  const rarities = orderRarities(Object.keys(summary.rarities));
-  const pct = summary.total ? Math.min(100, Math.round((summary.unique / summary.total) * 100)) : 0;
+  // Every rarity the set has, plus any owned one the set totals lack.
+  const rarities = orderRarities([
+    ...Object.keys(summary.rarityTotals),
+    ...Object.keys(summary.rarities),
+  ]).filter(Boolean);
+  const pct = percent(summary.unique, summary.total);
   // Parse as local midnight so the date doesn't shift a day in negative UTC offsets.
   const released = summary.releasedAt
     ? new Date(`${summary.releasedAt}T00:00`).toLocaleDateString(undefined, {
@@ -68,19 +77,36 @@ export function SetCard({ summary, onSelect }: Props) {
       </div>
 
       {rarities.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex flex-col gap-1">
           {rarities.map((r) => {
             const meta = rarityMeta(r);
+            const owned = summary.rarities[r] ?? 0;
+            const total = summary.rarityTotals[r] ?? 0;
+            const p = percent(owned, total);
             return (
-              <span
+              <div
                 key={r}
-                title={`${summary.rarities[r]} ${r}`}
-                className="flex h-5 items-center gap-1 rounded px-1 text-[11px] font-semibold ring-1 ring-white/10"
-                style={{ backgroundColor: meta.bg, color: meta.text }}
+                title={total ? `${owned} of ${total} ${r} cards in the set` : `${owned} ${r}`}
+                className="flex items-center gap-2 text-[11px] text-zinc-400"
               >
-                {meta.label}
-                <span className="opacity-80">{summary.rarities[r]}</span>
-              </span>
+                <span
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px] font-semibold ring-1 ring-white/10"
+                  style={{ backgroundColor: meta.bg, color: meta.text }}
+                >
+                  {meta.label}
+                </span>
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${p}%`, backgroundColor: meta.bg === '#1f1f24' ? '#a1a1aa' : meta.bg }}
+                  />
+                </div>
+                <span className="w-14 text-right tabular-nums">
+                  {owned}
+                  {total > 0 && `/${total}`}
+                </span>
+                <span className="w-8 text-right tabular-nums text-zinc-200">{total > 0 ? `${p}%` : ''}</span>
+              </div>
             );
           })}
         </div>

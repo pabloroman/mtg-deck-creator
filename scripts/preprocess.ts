@@ -195,14 +195,26 @@ async function main() {
   const cards: OwnedCard[] = [];
   const seen = new Set<string>();
   let imageless = 0;
-  // Per set: earliest release date + distinct cards (oracle ids), for the Sets page.
-  const setStats = new Map<string, { releasedAt: string; oracles: Set<string> }>();
+  // Per set: earliest release date + distinct cards (oracle ids), overall and per rarity,
+  // for the Sets page.
+  const setStats = new Map<
+    string,
+    { releasedAt: string; oracles: Set<string>; byRarity: Map<string, Set<string>> }
+  >();
   for await (const c of readJsonl<ScryCard>(cardsPath)) {
     if (c.set) {
       let st = setStats.get(c.set);
-      if (!st) setStats.set(c.set, (st = { releasedAt: c.released_at ?? '', oracles: new Set() }));
+      if (!st) {
+        st = { releasedAt: c.released_at ?? '', oracles: new Set(), byRarity: new Map() };
+        setStats.set(c.set, st);
+      }
       if (c.released_at && (!st.releasedAt || c.released_at < st.releasedAt)) st.releasedAt = c.released_at;
-      st.oracles.add(c.oracle_id ?? c.name);
+      const oid = c.oracle_id ?? c.name;
+      st.oracles.add(oid);
+      const r = c.rarity ?? '';
+      let rs = st.byRarity.get(r);
+      if (!rs) st.byRarity.set(r, (rs = new Set()));
+      rs.add(oid);
     }
     const own = owned.get(c.id);
     if (!own || seen.has(c.id)) continue;
@@ -441,7 +453,10 @@ async function main() {
   const sets: Record<string, SetInfo> = {};
   for (const code of new Set(cards.map((c) => c.set))) {
     const st = setStats.get(code);
-    if (st) sets[code] = { releasedAt: st.releasedAt, total: st.oracles.size };
+    if (!st) continue;
+    const rarities: Record<string, number> = {};
+    for (const [r, oids] of st.byRarity) rarities[r] = oids.size;
+    sets[code] = { releasedAt: st.releasedAt, total: st.oracles.size, rarities };
   }
   fs.writeFileSync(path.join(OUT_DIR, 'sets.json'), JSON.stringify(sets));
 
