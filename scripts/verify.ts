@@ -14,7 +14,7 @@ import {
   listCommanders,
   buildSkeleton,
 } from '../src/lib/commander';
-import { buildCardIndex, cardKey, isLand, manaCurve } from '../src/lib/deck';
+import { buildCardIndex, cardKey, isLand, manaCurve, manaStats, shuffledLibrary } from '../src/lib/deck';
 import type { Color, OwnedCard, ResolvedArchetype } from '../src/types';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -160,6 +160,44 @@ console.log(`AND with unknown tag => ${two.length} (from ${single.length})`);
   );
   assert.deepStrictEqual(curve, [0, 0, 3, 0, 0, 0, 0, 1], `unexpected mana curve ${curve}`);
   console.log('mana curve =>', curve.join(' '));
+
+  // 5a) mana stats: pips weighted by copies, average MV over nonland, land count
+  const twoDrop = [...index.values()].find((c) => /^\{1\}\{[WUBRG]\}$/.test(c.manaCost))!;
+  const mana = manaStats(
+    {
+      id: 'v', name: 'v', format: 'standard', commanderOracleId: null, createdAt: 0, updatedAt: 0,
+      entries: [
+        { oracleId: cardKey(twoDrop), quantity: 3 },
+        { oracleId: pick(isLand), quantity: 4 },
+      ],
+    },
+    index,
+  )!;
+  assert.strictEqual(mana.pips[twoDrop.manaCost[4] as Color], 3, 'expected 3 pips of one colour');
+  assert.strictEqual(mana.pipTotal, 3);
+  assert.strictEqual(mana.avgMv, 2);
+  assert.strictEqual(mana.lands, 4);
+  assert.ok([22, 23].includes(mana.recommendedLands), `unexpected lands ${mana.recommendedLands}`);
+  console.log('mana stats => avg', mana.avgMv, 'lands', mana.lands, '/', mana.recommendedLands);
+
+  // 5b) sample-hand library: one item per copy; commander and unknown cards left out
+  const land = pick(isLand);
+  const cmd = pick(isCommander);
+  const library = shuffledLibrary(
+    {
+      id: 'v', name: 'v', format: 'commander', commanderOracleId: cmd, createdAt: 0, updatedAt: 0,
+      entries: [
+        { oracleId: land, quantity: 4 },
+        { oracleId: pick((c) => !isLand(c) && c.cmc === 2 && cardKey(c) !== cmd), quantity: 3 },
+        { oracleId: 'not-in-collection', quantity: 2 },
+      ],
+    },
+    index,
+  );
+  assert.strictEqual(library.length, 7, `expected a 7-card library, got ${library.length}`);
+  assert.strictEqual(library.filter((c) => cardKey(c) === land).length, 4, 'expected 4 land copies');
+  assert.ok(library.every((c) => cardKey(c) !== cmd), 'commander must not be in the library');
+  console.log('shuffled library =>', library.length, 'cards');
 }
 
 // ---- synergy engine ----

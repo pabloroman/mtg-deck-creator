@@ -14,13 +14,15 @@ import {
   deckToText,
   groupByType,
   manaCurve,
+  manaStats,
   validateDeck,
 } from '../lib/deck';
 import { listCommanders } from '../lib/commander';
 import { Segmented } from './Segmented';
 import { IdentityDots } from './IdentityDots';
 import { ManaCost } from './ManaCost';
-import { ManaCurve } from './ManaCurve';
+import { ManaCurve, ManaSummary } from './ManaCurve';
+import { SampleHand } from './SampleHand';
 
 interface Props {
   deck: Deck;
@@ -55,6 +57,7 @@ export function DeckEditor({
   const [pickingCommander, setPickingCommander] = useState(false);
   const [copied, setCopied] = useState(false);
   const [preview, setPreview] = useState<OwnedCard | null>(null);
+  const [sampling, setSampling] = useState(false);
 
   const isEmpty = deck.entries.length === 0 && !deck.commanderOracleId;
   const copyList = async () => {
@@ -71,6 +74,7 @@ export function DeckEditor({
   const issues = useMemo(() => validateDeck(deck, index), [deck, index]);
   const groups = useMemo(() => groupByType(deck, index), [deck, index]);
   const curve = useMemo(() => manaCurve(deck, index), [deck, index]);
+  const mana = useMemo(() => manaStats(deck, index), [deck, index]);
 
   const issuesByOid = useMemo(() => {
     const m = new Map<string, DeckIssue[]>();
@@ -153,6 +157,20 @@ export function DeckEditor({
             </button>
             <button
               type="button"
+              onClick={() => setSampling((v) => !v)}
+              disabled={stats.mainCount < 7}
+              aria-pressed={sampling}
+              title="Draw sample opening hands"
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
+                sampling
+                  ? 'bg-sky-500/20 text-sky-200'
+                  : 'bg-white/10 text-zinc-200 hover:bg-white/20'
+              }`}
+            >
+              Sample hand
+            </button>
+            <button
+              type="button"
               onClick={onSetActive}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                 isActive
@@ -190,12 +208,16 @@ export function DeckEditor({
           )}
 
           <ManaCurve curve={curve} />
+          {mana && <ManaSummary stats={mana} />}
 
           <ValidationPanel issues={issues} />
         </aside>
 
         {/* card groups: flow into two columns, each group kept whole */}
         <div className="gap-8 md:columns-2">
+          {sampling && stats.mainCount >= 7 && (
+            <SampleHand key={deck.updatedAt} deck={deck} index={index} onPreview={setPreview} />
+          )}
           {deck.entries.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center text-zinc-500 [column-span:all]">
               No cards yet. Open a card in <span className="text-zinc-300">Browse</span> and use

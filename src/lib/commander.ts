@@ -84,7 +84,7 @@ const slugSets = new Map<string, Set<string>>(
 );
 const ASSIGN_ORDER = ['ramp', 'removal', 'draw'] as const;
 
-function roleOf(card: OwnedCard): string {
+export function roleOf(card: OwnedCard): string {
   if (isLand(card)) return 'lands';
   for (const id of ASSIGN_ORDER) {
     if (hasAny(card, slugSets.get(id)!)) return id;

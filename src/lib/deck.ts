@@ -1,6 +1,7 @@
 import type { Color, OwnedCard } from '../types';
 import { groupPrintings } from '../search/groupPrintings';
-import { identitySet, withinIdentity, isCommander } from './commander';
+import { identitySet, withinIdentity, isCommander, roleOf } from './commander';
+import { COLORS, parseManaSymbols } from './mana';
 
 /** A user-built deck. 'standard' = generic 60-card constructed. */
 export type DeckFormat = 'commander' | 'standard';
@@ -215,6 +216,75 @@ export function manaCurve(deck: Deck, index: CardIndex): number[] {
   for (const entry of deck.entries) add(entry.oracleId, entry.quantity);
   if (deck.format === 'commander' && deck.commanderOracleId) add(deck.commanderOracleId, 1);
   return curve;
+}
+
+export interface ManaStats {
+  pips: Record<Color, number>; // coloured mana symbols in costs, weighted by copies
+  pipTotal: number;
+  avgMv: number; // average mana value of nonland cards
+  lands: number; // lands currently in the deck
+  recommendedLands: number;
+}
+
+/**
+ * Colour-pip split, average mana value and a suggested land count. Like the curve,
+ * the commander counts and cards missing from the collection don't. Null when the
+ * deck has no nonland cards. A hybrid symbol is split evenly between its colours.
+ *
+ * Land count is Frank Karsten's regression ("How Many Lands Do You Need in Your
+ * Deck?", 2022): base + slope × average MV − 0.28 × cheap ramp/draw spells.
+ */
+export function manaStats(deck: Deck, index: CardIndex): ManaStats | null {
+  const pips: Record<Color, number> = { W: 0, U: 0, B: 0, R: 0, G: 0 };
+  let spells = 0;
+  let mvSum = 0;
+  let lands = 0;
+  let cheap = 0; // ramp or card draw at mana value <= 2
+  const add = (oracleId: string, quantity: number) => {
+    const card = index.get(oracleId);
+    if (!card) return;
+    if (isLand(card)) {
+      lands += quantity;
+      return;
+    }
+    spells += quantity;
+    mvSum += card.cmc * quantity;
+    const role = roleOf(card);
+    if (card.cmc <= 2 && (role === 'ramp' || role === 'draw')) cheap += quantity;
+    for (const sym of parseManaSymbols(card.manaCost.split(' // ')[0])) {
+      const cols = COLORS.filter((c) => sym.split('/').includes(c));
+      for (const c of cols) pips[c] += quantity / cols.length;
+    }
+  };
+  for (const entry of deck.entries) add(entry.oracleId, entry.quantity);
+  const commander = deck.format === 'commander';
+  if (commander && deck.commanderOracleId) add(deck.commanderOracleId, 1);
+  if (spells === 0) return null;
+
+  const avgMv = mvSum / spells;
+  // ponytail: assumes a full 99/60-card deck; scale by deck size if other sizes appear.
+  const recommendedLands = Math.round(
+    (commander ? 31.42 + 3.13 * avgMv : 19.59 + 1.9 * avgMv) - 0.28 * cheap,
+  );
+  const pipTotal = COLORS.reduce((n, c) => n + pips[c], 0);
+  return { pips, pipTotal, avgMv, lands, recommendedLands };
+}
+
+/**
+ * The deck's library in random order, one item per copy. The commander (never in
+ * `entries`) and cards missing from the collection are left out.
+ */
+export function shuffledLibrary(deck: Deck, index: CardIndex): OwnedCard[] {
+  const library: OwnedCard[] = [];
+  for (const entry of deck.entries) {
+    const card = index.get(entry.oracleId);
+    if (card) for (let i = 0; i < entry.quantity; i++) library.push(card);
+  }
+  for (let i = library.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [library[i], library[j]] = [library[j], library[i]];
+  }
+  return library;
 }
 
 // --- export ---------------------------------------------------------------
