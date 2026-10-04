@@ -166,6 +166,9 @@ export default function App() {
     parsed.typeTerms.length > 0 ||
     parsed.keywordSlugs.length > 0 ||
     parsed.setCodes.length > 0 ||
+    parsed.mvTerms.length > 0 ||
+    parsed.identityTerms.length > 0 ||
+    parsed.oracleTerms.length > 0 ||
     parsed.text.length > 0 ||
     f.colors.length > 0 ||
     f.rarities.length > 0 ||

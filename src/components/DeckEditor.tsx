@@ -13,11 +13,14 @@ import {
   deckStats,
   deckToText,
   groupByType,
+  manaCurve,
   validateDeck,
 } from '../lib/deck';
 import { listCommanders } from '../lib/commander';
 import { Segmented } from './Segmented';
 import { IdentityDots } from './IdentityDots';
+import { ManaCost } from './ManaCost';
+import { ManaCurve } from './ManaCurve';
 
 interface Props {
   deck: Deck;
@@ -51,6 +54,7 @@ export function DeckEditor({
   const [nameDraft, setNameDraft] = useState(deck.name);
   const [pickingCommander, setPickingCommander] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [preview, setPreview] = useState<OwnedCard | null>(null);
 
   const isEmpty = deck.entries.length === 0 && !deck.commanderOracleId;
   const copyList = async () => {
@@ -66,6 +70,7 @@ export function DeckEditor({
   const stats = useMemo(() => deckStats(deck, index), [deck, index]);
   const issues = useMemo(() => validateDeck(deck, index), [deck, index]);
   const groups = useMemo(() => groupByType(deck, index), [deck, index]);
+  const curve = useMemo(() => manaCurve(deck, index), [deck, index]);
 
   const issuesByOid = useMemo(() => {
     const m = new Map<string, DeckIssue[]>();
@@ -79,17 +84,64 @@ export function DeckEditor({
   }, [issues]);
 
   const rule = FORMAT_RULES[deck.format];
-  const commander = deck.commanderOracleId ? index.get(deck.commanderOracleId) ?? null : null;
+  const commander = deck.commanderOracleId ? (index.get(deck.commanderOracleId) ?? null) : null;
+
+  // Sidebar preview: the last hovered card, else the commander, else the first card.
+  const shown = preview ?? commander ?? groups[0]?.cards.find((re) => re.card)?.card ?? null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* header */}
-      <div className="space-y-3 rounded-2xl bg-[#13161e] p-4 ring-1 ring-white/10">
-        <div className="flex items-center justify-between gap-3">
-          <button type="button" onClick={onBack} className="text-sm text-zinc-400 hover:text-white">
-            ← My decks
-          </button>
-          <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="shrink-0 text-sm text-zinc-400 hover:text-white"
+        >
+          ← My decks
+        </button>
+        <input
+          value={nameDraft}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={() => onRename(nameDraft)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+          aria-label="Deck name"
+          className="min-w-0 flex-1 rounded-lg bg-transparent px-1 text-2xl font-bold text-white outline-none ring-1 ring-transparent focus:bg-white/5 focus:ring-white/10"
+        />
+      </div>
+
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        {/* meta sidebar (on top below lg) */}
+        <aside className="space-y-3 rounded-2xl bg-[#13161e] p-4 ring-1 ring-white/10 lg:sticky lg:top-20 lg:order-last lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto scroll-thin">
+          {shown?.image && (
+            <img
+              src={shown.image}
+              alt={shown.name}
+              className="hidden aspect-[5/7] w-full rounded-xl object-cover lg:block"
+            />
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Segmented
+              value={deck.format}
+              onChange={onSetFormat}
+              options={[
+                { value: 'commander', label: 'Commander' },
+                { value: 'standard', label: '60-card' },
+              ]}
+            />
+            <span
+              className={`text-sm font-semibold tabular-nums ${countTone(stats.totalWithCommander, rule)}`}
+            >
+              {stats.totalWithCommander} / {rule.targetCount}
+              {rule.exactCount ? '' : '+'}
+            </span>
+            <IdentityDots identity={stats.colorIdentity} />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={copyList}
@@ -103,7 +155,9 @@ export function DeckEditor({
               type="button"
               onClick={onSetActive}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                isActive ? 'bg-sky-500/20 text-sky-200' : 'bg-white/10 text-zinc-200 hover:bg-white/20'
+                isActive
+                  ? 'bg-sky-500/20 text-sky-200'
+                  : 'bg-white/10 text-zinc-200 hover:bg-white/20'
               }`}
             >
               {isActive ? '★ Active deck' : 'Set as active'}
@@ -118,82 +172,59 @@ export function DeckEditor({
               Delete
             </button>
           </div>
+
+          {deck.format === 'commander' && (
+            <div onMouseEnter={() => commander && setPreview(commander)}>
+              <CommanderBlock
+                commander={commander}
+                cards={cards}
+                picking={pickingCommander}
+                onTogglePick={() => setPickingCommander((v) => !v)}
+                onPick={(oid) => {
+                  onSetCommander(oid);
+                  setPickingCommander(false);
+                }}
+                onSelectCard={onSelectCard}
+              />
+            </div>
+          )}
+
+          <ManaCurve curve={curve} />
+
+          <ValidationPanel issues={issues} />
+        </aside>
+
+        {/* card groups: flow into two columns, each group kept whole */}
+        <div className="gap-8 md:columns-2">
+          {deck.entries.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center text-zinc-500 [column-span:all]">
+              No cards yet. Open a card in <span className="text-zinc-300">Browse</span> and use
+              “Add to deck”.
+              {isActive && ' Or hover any card and click the +.'}
+            </div>
+          ) : (
+            groups.map((g) => (
+              <section key={g.type} className="mb-6 break-inside-avoid">
+                <div className="mb-1 border-b border-white/10 pb-1">
+                  <h3 className="text-base font-semibold text-zinc-100">{g.type}</h3>
+                  <p className="text-xs tabular-nums text-zinc-500">Qty: {g.count}</p>
+                </div>
+                {g.cards.map((re) => (
+                  <DeckRow
+                    key={re.entry.oracleId}
+                    re={re}
+                    format={deck.format}
+                    rowIssues={issuesByOid.get(re.entry.oracleId)}
+                    onAdjust={onAdjust}
+                    onSelectCard={onSelectCard}
+                    onPreview={setPreview}
+                  />
+                ))}
+              </section>
+            ))
+          )}
         </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <input
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            onBlur={() => onRename(nameDraft)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            }}
-            aria-label="Deck name"
-            className="w-full max-w-md rounded-lg bg-transparent px-1 text-2xl font-bold text-white outline-none ring-1 ring-transparent focus:bg-white/5 focus:ring-white/10"
-          />
-          <div className="flex items-center gap-3">
-            <Segmented
-              value={deck.format}
-              onChange={onSetFormat}
-              options={[
-                { value: 'commander', label: 'Commander' },
-                { value: 'standard', label: '60-card' },
-              ]}
-            />
-            <span className={`text-sm font-semibold tabular-nums ${countTone(stats.totalWithCommander, rule)}`}>
-              {stats.totalWithCommander} / {rule.targetCount}
-              {rule.exactCount ? '' : '+'}
-            </span>
-            <IdentityDots identity={stats.colorIdentity} />
-          </div>
-        </div>
-
-        {deck.format === 'commander' && (
-          <CommanderBlock
-            commander={commander}
-            cards={cards}
-            picking={pickingCommander}
-            onTogglePick={() => setPickingCommander((v) => !v)}
-            onPick={(oid) => {
-              onSetCommander(oid);
-              setPickingCommander(false);
-            }}
-            onSelectCard={onSelectCard}
-          />
-        )}
-
-        <ValidationPanel issues={issues} />
       </div>
-
-      {/* card groups */}
-      {deck.entries.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center text-zinc-500">
-          No cards yet. Open a card in <span className="text-zinc-300">Browse</span> and use “Add to
-          deck”.
-          {isActive && ' Or hover any card and click the +.'}
-        </div>
-      ) : (
-        groups.map((g) => (
-          <section key={g.type}>
-            <div className="mb-2 flex items-baseline gap-2">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">{g.type}</h3>
-              <span className="text-sm tabular-nums text-zinc-500">{g.count}</span>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 lg:grid-cols-2">
-              {g.cards.map((re) => (
-                <DeckRow
-                  key={re.entry.oracleId}
-                  re={re}
-                  format={deck.format}
-                  rowIssues={issuesByOid.get(re.entry.oracleId)}
-                  onAdjust={onAdjust}
-                  onSelectCard={onSelectCard}
-                />
-              ))}
-            </div>
-          </section>
-        ))
-      )}
     </div>
   );
 }
@@ -209,64 +240,58 @@ function DeckRow({
   rowIssues,
   onAdjust,
   onSelectCard,
+  onPreview,
 }: {
   re: ResolvedEntry;
   format: DeckFormat;
   rowIssues?: DeckIssue[];
   onAdjust: (oracleId: string, delta: number, cap: number) => void;
   onSelectCard: (card: OwnedCard) => void;
+  onPreview: (card: OwnedCard) => void;
 }) {
   const { entry, card, owned } = re;
   const error = rowIssues?.find((i) => i.severity === 'error');
   const cap = card ? copyCap(card, format, owned) : entry.quantity;
   const atCap = entry.quantity >= cap;
+  const stepClass =
+    'h-6 w-6 rounded text-sm leading-none text-zinc-500 hover:bg-white/10 hover:text-zinc-200';
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg p-1.5 ring-1 ${
-        error ? 'bg-red-500/5 ring-red-500/40' : 'ring-white/10'
+      className={`flex items-center gap-3 rounded-md px-2 py-1 ${
+        error ? 'bg-red-500/5 ring-1 ring-red-500/40' : 'hover:bg-white/5'
       }`}
     >
       <button
         type="button"
         onClick={() => card && onSelectCard(card)}
+        onMouseEnter={() => card && onPreview(card)}
+        onFocus={() => card && onPreview(card)}
         disabled={!card}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        className="min-w-0 flex-1 text-left"
       >
-        {card?.image ? (
-          <img src={card.image} alt="" loading="lazy" className="h-12 w-9 shrink-0 rounded object-cover" />
-        ) : (
-          <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded bg-zinc-800 text-[10px] text-zinc-500">
-            ?
-          </div>
-        )}
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-zinc-100">
-            {card?.name ?? 'Unknown card'}
-          </span>
-          <span className="block truncate text-xs text-zinc-500">
-            {card ? card.typeLine : 'Not in your collection'}
-            {card && ` · own ${owned}`}
-          </span>
-          {error && <span className="block truncate text-xs text-red-300">{error.message}</span>}
+        <span className="block truncate text-sm font-medium text-zinc-100">
+          <span className="tabular-nums">{entry.quantity}</span>{' '}
+          {card?.name ?? 'Unknown card (not in your collection)'}
         </span>
+        {error && <span className="block truncate text-xs text-red-300">{error.message}</span>}
       </button>
-      <div className="flex shrink-0 items-center gap-1">
+      {card && <ManaCost cost={card.manaCost} />}
+      <div className="flex shrink-0 items-center">
         <button
           type="button"
           aria-label="Remove one"
           onClick={() => onAdjust(entry.oracleId, -1, cap)}
-          className="h-6 w-6 rounded bg-white/10 text-sm font-bold leading-none text-zinc-200 hover:bg-white/20"
+          className={stepClass}
         >
           −
         </button>
-        <span className="w-6 text-center text-sm tabular-nums text-zinc-100">{entry.quantity}</span>
         <button
           type="button"
           aria-label="Add one"
           disabled={atCap}
           onClick={() => onAdjust(entry.oracleId, 1, cap)}
-          className="h-6 w-6 rounded bg-white/10 text-sm font-bold leading-none text-zinc-200 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-30"
+          className={`${stepClass} disabled:cursor-not-allowed disabled:opacity-30`}
         >
           +
         </button>
@@ -274,7 +299,7 @@ function DeckRow({
           type="button"
           aria-label="Remove from deck"
           onClick={() => onAdjust(entry.oracleId, -entry.quantity, cap)}
-          className="ml-0.5 h-6 w-6 rounded text-sm text-zinc-500 hover:bg-red-500/20 hover:text-red-300"
+          className="h-6 w-6 rounded text-sm leading-none text-zinc-500 hover:bg-red-500/20 hover:text-red-300"
         >
           ✕
         </button>
@@ -302,10 +327,9 @@ function CommanderBlock({
   const commanders = useMemo(() => listCommanders(cards), [cards]);
   const filtered = useMemo(() => {
     const text = q.trim().toLowerCase();
-    return (text ? commanders.filter((c) => c.name.toLowerCase().includes(text)) : commanders).slice(
-      0,
-      40,
-    );
+    return (
+      text ? commanders.filter((c) => c.name.toLowerCase().includes(text)) : commanders
+    ).slice(0, 40);
   }, [commanders, q]);
 
   return (
@@ -318,7 +342,11 @@ function CommanderBlock({
             className="flex min-w-0 flex-1 items-center gap-2 text-left"
           >
             {commander.image && (
-              <img src={commander.image} alt="" className="h-12 w-9 shrink-0 rounded object-cover" />
+              <img
+                src={commander.image}
+                alt=""
+                className="h-12 w-9 shrink-0 rounded object-cover"
+              />
             )}
             <span className="min-w-0">
               <span className="block text-[10px] uppercase tracking-wide text-zinc-500">
@@ -369,7 +397,12 @@ function CommanderBlock({
                 className="flex w-full items-center gap-2 rounded-lg p-1.5 text-left ring-1 ring-white/10 hover:bg-white/5"
               >
                 {c.image && (
-                  <img src={c.image} alt="" loading="lazy" className="h-10 w-8 shrink-0 rounded object-cover" />
+                  <img
+                    src={c.image}
+                    alt=""
+                    loading="lazy"
+                    className="h-10 w-8 shrink-0 rounded object-cover"
+                  />
                 )}
                 <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">{c.name}</span>
                 <IdentityDots identity={c.colorIdentity} />

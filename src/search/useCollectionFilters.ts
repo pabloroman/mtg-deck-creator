@@ -108,6 +108,9 @@ export function applyCollectionFilters(
     match: f.match,
     rarities: f.rarities,
     setCodes: parsed?.setCodes ?? [],
+    mvTerms: parsed?.mvTerms ?? [],
+    identityTerms: parsed?.identityTerms ?? [],
+    oracleTerms: parsed?.oracleTerms ?? [],
     pauperOnly: f.pauperOnly,
     playableOnly: f.playableOnly,
   });

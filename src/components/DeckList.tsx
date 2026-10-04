@@ -1,5 +1,13 @@
-import { type CardIndex, type Deck, FORMAT_RULES, deckStats, validateDeck } from '../lib/deck';
+import {
+  type CardIndex,
+  type Deck,
+  FORMAT_RULES,
+  deckStats,
+  manaCurve,
+  validateDeck,
+} from '../lib/deck';
 import { IdentityDots } from './IdentityDots';
+import { ManaCurve } from './ManaCurve';
 
 interface Props {
   decks: Deck[];
@@ -92,6 +100,8 @@ export function DeckList({ decks, index, activeDeckId, onOpen, onNew, onSetActiv
                     <span className="truncate text-xs text-zinc-400">{commander.name}</span>
                   </button>
                 )}
+
+                <ManaCurve curve={manaCurve(deck, index)} />
 
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm tabular-nums text-zinc-300">

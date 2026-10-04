@@ -202,6 +202,21 @@ export function deckStats(deck: Deck, index: CardIndex): DeckStats {
   };
 }
 
+/**
+ * Nonland cards per mana value, weighted by in-deck copies: index = mana value, the
+ * last bucket is 7+. The commander counts; cards missing from the collection don't.
+ */
+export function manaCurve(deck: Deck, index: CardIndex): number[] {
+  const curve = new Array<number>(8).fill(0);
+  const add = (oracleId: string, quantity: number) => {
+    const card = index.get(oracleId);
+    if (card && !isLand(card)) curve[Math.min(Math.floor(card.cmc), 7)] += quantity;
+  };
+  for (const entry of deck.entries) add(entry.oracleId, entry.quantity);
+  if (deck.format === 'commander' && deck.commanderOracleId) add(deck.commanderOracleId, 1);
+  return curve;
+}
+
 // --- export ---------------------------------------------------------------
 
 /**

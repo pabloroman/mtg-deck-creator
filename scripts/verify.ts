@@ -14,6 +14,7 @@ import {
   listCommanders,
   buildSkeleton,
 } from '../src/lib/commander';
+import { buildCardIndex, cardKey, isLand, manaCurve } from '../src/lib/deck';
 import type { Color, OwnedCard, ResolvedArchetype } from '../src/types';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,9 @@ const run = (raw: string, colors: ('W' | 'U' | 'B' | 'R' | 'G' | 'C')[] = []) =>
     tagSlugs: p.tagSlugs,
     typeTerms: p.typeTerms,
     keywords: p.keywordSlugs,
+    mvTerms: p.mvTerms,
+    identityTerms: p.identityTerms,
+    oracleTerms: p.oracleTerms,
     text: p.text,
     colors,
     axis: 'identity',
@@ -52,6 +56,44 @@ assert.ok(
   'every kw:flying result must have the Flying keyword',
 );
 console.log(`kw:flying => ${flyers.length} cards`);
+
+// 2b') mana-value search: mv<=2, mv:3, and an AND-ed range
+const cheap = run('mv<=2');
+assert.ok(cheap.length > 0 && cheap.every((c) => c.cmc <= 2), 'mv<=2 must keep only cmc <= 2');
+const three = run('cmc:3');
+assert.ok(three.length > 0 && three.every((c) => c.cmc === 3), 'cmc:3 must keep only cmc 3');
+const mid = run('mv>=2 mv<4');
+assert.ok(mid.length > 0 && mid.every((c) => c.cmc >= 2 && c.cmc < 4), 'mv>=2 mv<4 is a range');
+assert.strictEqual(parseQuery('mv<=x dragon').text, 'mv<=x dragon', 'bad mv token is name text');
+console.log(`mv<=2 => ${cheap.length}, cmc:3 => ${three.length}, mv>=2 mv<4 => ${mid.length}`);
+
+// 2b+) color-identity search: within / exactly / at least / colorless
+const idOf = (c: OwnedCard) => [...c.colorIdentity].sort().join('');
+const within = run('id:rg');
+assert.ok(within.length > 0 && within.every((c) => /^G?R?$/.test(idOf(c))), 'id:rg = within RG');
+const exact = run('ci=gr');
+assert.ok(exact.length > 0 && exact.every((c) => idOf(c) === 'GR'), 'ci=gr = exactly RG');
+const atLeast = run('id>=rg');
+assert.ok(
+  atLeast.length > exact.length &&
+    atLeast.every((c) => c.colorIdentity.includes('R') && c.colorIdentity.includes('G')),
+  'id>=rg = contains R and G',
+);
+const colorless = run('id:c');
+assert.ok(colorless.length > 0 && colorless.every((c) => c.colorIdentity.length === 0), 'id:c');
+assert.strictEqual(within.length, exact.length + run('id<rg').length, 'id< is a strict subset');
+console.log(`id:rg => ${within.length}, id=rg => ${exact.length}, id>=rg => ${atLeast.length}`);
+
+// 2b'') rules-text search: single word, quoted phrase, and a phrase still being typed
+const draw = run('fo:"draw a card" mv<=2');
+assert.ok(
+  draw.length > 0 && draw.every((c) => c.oracleText.toLowerCase().includes('draw a card')),
+  'fo:"draw a card" must keep only cards with that rules text',
+);
+assert.ok(run('fo:draw').length >= draw.length, 'fo:draw is broader than the phrase');
+assert.deepStrictEqual(parseQuery('fo:"draw a').oracleTerms, ['draw a'], 'open quote = one term');
+assert.strictEqual(parseQuery('fo:flying dragon').text, 'dragon', 'fo: stays out of name text');
+console.log(`fo:"draw a card" mv<=2 => ${draw.length} cards`);
 
 // 2c) pauper-legal filter narrows to only Pauper-legal cards, and never adds results
 const allCards = filterCards(cards, {
@@ -100,6 +142,25 @@ const single = run('otag:reanimate');
 const two = run('otag:reanimate otag:nonexistent-tag-xyz');
 assert.strictEqual(two.length, 0, 'unknown ANDed tag should yield 0');
 console.log(`AND with unknown tag => ${two.length} (from ${single.length})`);
+
+// 5) mana curve: copies land in their mana-value bucket, lands are left out, 7+ is capped
+{
+  const index = buildCardIndex(cards);
+  const pick = (pred: (c: OwnedCard) => boolean) => cardKey([...index.values()].find(pred)!);
+  const curve = manaCurve(
+    {
+      id: 'v', name: 'v', format: 'standard', commanderOracleId: null, createdAt: 0, updatedAt: 0,
+      entries: [
+        { oracleId: pick((c) => !isLand(c) && c.cmc === 2), quantity: 3 },
+        { oracleId: pick((c) => !isLand(c) && c.cmc >= 8), quantity: 1 },
+        { oracleId: pick(isLand), quantity: 4 },
+      ],
+    },
+    index,
+  );
+  assert.deepStrictEqual(curve, [0, 0, 3, 0, 0, 0, 0, 1], `unexpected mana curve ${curve}`);
+  console.log('mana curve =>', curve.join(' '));
+}
 
 // ---- synergy engine ----
 console.log('\n--- synergy engine ---');

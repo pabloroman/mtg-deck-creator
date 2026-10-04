@@ -1,8 +1,22 @@
+export type MvOp = '=' | '<' | '<=' | '>' | '>=';
+export interface MvTerm {
+  op: MvOp;
+  value: number;
+}
+
+export interface IdentityTerm {
+  op: MvOp;
+  colors: string[]; // uppercase color letters; [] = colorless
+}
+
 export interface ParsedQuery {
   tagSlugs: string[]; // AND-ed together
   typeTerms: string[]; // type-line substrings, AND-ed together
   keywordSlugs: string[]; // MTG keyword-ability slugs, AND-ed together
   setCodes: string[]; // set codes, OR-ed together
+  oracleTerms: string[]; // lowercased rules-text substrings, AND-ed together
+  mvTerms: MvTerm[];
+  identityTerms: IdentityTerm[]; // color-identity comparisons, AND-ed together // mana-value comparisons, AND-ed together (mv>=2 mv<=4 = a range)
   text: string; // lowercased name substring
 }
 
@@ -10,6 +24,11 @@ const TAG_PREFIXES = ['otag:', 'tag:'];
 const TYPE_PREFIXES = ['type:', 't:'];
 const KEYWORD_PREFIXES = ['kw:', 'keyword:'];
 const SET_PREFIXES = ['set:', 's:'];
+// id:rg / id<=rg (fits in an RG deck), id=rg (exactly), id>=rg (at least), id:c (colorless)
+const IDENTITY_TOKEN = /^(?:id|ci|identity)(:|=|<=|>=|<|>)([wubrgc]+)$/i;
+const ORACLE_PREFIXES = ['fo:', 'fulloracle:'];
+// mv:3 / mv=3 / mv<=2 / mv>=5 / mv<4 / mv>4 (cmc and manavalue are aliases)
+const MV_TOKEN = /^(?:mv|cmc|manavalue)(:|=|<=|>=|<|>)(\d+)$/i;
 
 /** Returns the matching tag prefix for a token, or null. */
 export function tagPrefixOf(token: string): string | null {
@@ -43,18 +62,44 @@ export function keywordSlug(s: string): string {
 /**
  * "otag:reanimate t:cat kw:flying set:woe dragon"
  *   -> { tagSlugs: ['reanimate'], typeTerms: ['cat'], keywordSlugs: ['flying'],
- *        setCodes: ['woe'], text: 'dragon' }
+ *        setCodes: ['woe'], mvTerms: [], text: 'dragon' }
  * Supports otag:/tag: for oracle tags, t:/type: for card type, kw:/keyword: for MTG
- * keyword abilities, set:/s: for set code; everything else is a name search.
+ * keyword abilities, set:/s: for set code, mv<=N style mana-value comparisons,
+ * id<=rg style color-identity comparisons, fo:/fulloracle: for rules text (quote phrases: fo:"draw a card"); everything else
+ * is a name search.
  */
 export function parseQuery(raw: string): ParsedQuery {
-  const tokens = raw.trim().split(/\s+/).filter(Boolean);
+  // whitespace-separated, but a "quoted phrase" stays inside its token (the closing
+  // quote is optional so a phrase still being typed isn't split into name words)
+  const tokens = raw.match(/(?:[^\s"]|"[^"]*"?)+/g) ?? [];
   const tagSlugs: string[] = [];
   const typeTerms: string[] = [];
   const keywordSlugs: string[] = [];
   const setCodes: string[] = [];
+  const oracleTerms: string[] = [];
+  const mvTerms: MvTerm[] = [];
+  const identityTerms: IdentityTerm[] = [];
   const textParts: string[] = [];
   for (const tok of tokens) {
+    const mv = MV_TOKEN.exec(tok);
+    if (mv) {
+      mvTerms.push({ op: mv[1] === ':' ? '=' : (mv[1] as MvOp), value: Number(mv[2]) });
+      continue;
+    }
+    const id = IDENTITY_TOKEN.exec(tok);
+    if (id) {
+      identityTerms.push({
+        op: id[1] === ':' ? '<=' : (id[1] as MvOp),
+        colors: [...new Set(id[2].toUpperCase())].filter((c) => c !== 'C'),
+      });
+      continue;
+    }
+    const oraclePref = ORACLE_PREFIXES.find((p) => tok.toLowerCase().startsWith(p));
+    if (oraclePref) {
+      const term = tok.slice(oraclePref.length).replace(/"/g, '').trim().toLowerCase();
+      if (term) oracleTerms.push(term);
+      continue;
+    }
     const tagPref = tagPrefixOf(tok);
     const typePref = !tagPref ? typePrefixOf(tok) : null;
     const kwPref = !tagPref && !typePref ? keywordPrefixOf(tok) : null;
@@ -75,7 +120,16 @@ export function parseQuery(raw: string): ParsedQuery {
       textParts.push(tok);
     }
   }
-  return { tagSlugs, typeTerms, keywordSlugs, setCodes, text: textParts.join(' ').toLowerCase() };
+  return {
+    tagSlugs,
+    typeTerms,
+    keywordSlugs,
+    setCodes,
+    oracleTerms,
+    mvTerms,
+    identityTerms,
+    text: textParts.join(' ').toLowerCase(),
+  };
 }
 
 /**
