@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { VIEWS, useRoute } from './lib/route';
 import { useCollection } from './data/useCollection';
 import { useDecks } from './data/useDecks';
 import {
@@ -29,16 +30,14 @@ import { DeckEditor } from './components/DeckEditor';
 import { NewDeckDialog } from './components/NewDeckDialog';
 import { SetsDashboard } from './components/SetsDashboard';
 
-type View = 'browse' | 'decks' | 'sets' | 'commander' | 'build';
-
 export default function App() {
   const { data, loading, error } = useCollection();
 
-  const [view, setView] = useState<View>('browse');
-  const [archetypeId, setArchetypeId] = useState<string | null>(null);
-  const [commander, setCommander] = useState<OwnedCard | null>(null);
-  const [selected, setSelected] = useState<OwnedCard | null>(null);
-  const [openDeckId, setOpenDeckId] = useState<string | null>(null);
+  // Navigation lives in the URL hash, so back/forward, reload and bookmarks all work.
+  const [route, go] = useRoute();
+  const { view } = route;
+  const archetypeId = view === 'decks' ? route.id : null;
+  const openDeckId = view === 'build' ? route.id : null;
   const [newDeckOpen, setNewDeckOpen] = useState(false);
   const decks = useDecks();
   const f = useCollectionFilters();
@@ -50,6 +49,21 @@ export default function App() {
     () => (data ? buildCardIndex(data.cards) : new Map<string, OwnedCard>()),
     [data],
   );
+
+  const commander =
+    (view === 'commander' && route.id ? cardIndex.get(route.id) : undefined) ?? null;
+
+  // The card open in the modal. A grouped card shows its total owned across printings.
+  const selected = useMemo(() => {
+    const printing = route.card ? data?.cards.find((c) => c.id === route.card) : undefined;
+    if (!printing) return null;
+    const all = route.grouped ? cardIndex.get(cardKey(printing)) : undefined;
+    return all
+      ? { ...printing, quantity: all.quantity, foil: all.foil, printingCount: all.printingCount }
+      : printing;
+  }, [data, cardIndex, route.card, route.grouped]);
+  const selectCard = (card: OwnedCard) =>
+    go({ card: card.id, grouped: card.printingCount != null });
 
   const openDeck = useMemo(
     () => decks.decks.find((d) => d.id === openDeckId) ?? null,
@@ -73,7 +87,7 @@ export default function App() {
     // Created from a card's "+ New deck…": drop that card straight in.
     if (selected) addCardToDeck(id, cardKey(selected));
     setNewDeckOpen(false);
-    if (view === 'build') setOpenDeckId(id);
+    if (view === 'build') go({ id });
   };
 
   const tagMeta = useMemo(() => {
@@ -179,8 +193,7 @@ export default function App() {
   // picking a tag (chip in the modal) always lands on the filtered browse view
   const addTag = (slug: string) => {
     f.setQuery((q) => appendTag(q, slug));
-    setView('browse');
-    setSelected(null);
+    go({ view: 'browse', id: null, card: null });
   };
 
   const removeTag = (slug: string) =>
@@ -372,15 +385,11 @@ export default function App() {
                   MTG Collection <span className="text-sky-400">Browser</span>
                 </h1>
                 <div className="inline-flex rounded-lg bg-white/5 p-0.5 text-sm ring-1 ring-white/10">
-                  {(['browse', 'decks', 'sets', 'commander', 'build'] as const).map((v) => (
+                  {VIEWS.map((v) => (
                     <button
                       key={v}
                       type="button"
-                      onClick={() => {
-                        setView(v);
-                        if (v === 'decks') setArchetypeId(null);
-                        if (v === 'build') setOpenDeckId(null);
-                      }}
+                      onClick={() => go({ view: v, id: null })}
                       className={`rounded-md px-3 py-1 font-medium transition ${
                         view === v ? 'bg-sky-500/20 text-sky-200' : 'text-zinc-400 hover:text-white'
                       }`}
@@ -430,7 +439,7 @@ export default function App() {
         {data && view === 'browse' && (
           <CardGrid
             cards={filtered}
-            onSelect={setSelected}
+            onSelect={selectCard}
             onQuickAdd={decks.activeDeckId ? quickAdd : undefined}
           />
         )}
@@ -441,11 +450,11 @@ export default function App() {
             <ArchetypeDetail
               score={selectedScore}
               cards={filtered}
-              onBack={() => setArchetypeId(null)}
-              onSelectCard={setSelected}
+              onBack={() => go({ id: null })}
+              onSelectCard={selectCard}
             />
           ) : (
-            <ArchetypeDashboard scores={scores} onSelect={setArchetypeId} />
+            <ArchetypeDashboard scores={scores} onSelect={(id) => go({ id })} />
           ))}
 
         {data && view === 'sets' && (
@@ -453,7 +462,7 @@ export default function App() {
             summaries={setSummaries}
             onSelectSet={(code) => {
               f.setQuery(`set:${code} `);
-              setView('browse');
+              go({ view: 'browse', id: null });
             }}
           />
         )}
@@ -463,8 +472,8 @@ export default function App() {
             cards={data.cards}
             archetypes={data.archetypes}
             commander={commander}
-            onPickCommander={setCommander}
-            onSelectCard={setSelected}
+            onPickCommander={(card) => go({ id: card ? cardKey(card) : null })}
+            onSelectCard={selectCard}
           />
         )}
 
@@ -477,7 +486,7 @@ export default function App() {
               cards={data.cards}
               index={cardIndex}
               isActive={decks.activeDeckId === openDeck.id}
-              onBack={() => setOpenDeckId(null)}
+              onBack={() => go({ id: null })}
               onRename={(name) => decks.renameDeck(openDeck.id, name)}
               onSetFormat={(format) => decks.setFormat(openDeck.id, format)}
               onSetCommander={(oid) => decks.setCommander(openDeck.id, oid)}
@@ -487,16 +496,16 @@ export default function App() {
               }
               onDelete={() => {
                 decks.deleteDeck(openDeck.id);
-                setOpenDeckId(null);
+                go({ id: null });
               }}
-              onSelectCard={setSelected}
+              onSelectCard={selectCard}
             />
           ) : (
             <DeckList
               decks={decks.decks}
               index={cardIndex}
               activeDeckId={decks.activeDeckId}
-              onOpen={setOpenDeckId}
+              onOpen={(id) => go({ id })}
               onNew={() => setNewDeckOpen(true)}
               onSetActive={decks.setActiveDeck}
               onDelete={decks.deleteDeck}
@@ -510,9 +519,9 @@ export default function App() {
           tagMeta={tagMeta}
           allCards={data.cards}
           archetypes={data.archetypes}
-          onClose={() => setSelected(null)}
+          onClose={() => go({ card: null })}
           onPickTag={addTag}
-          onSelectCard={setSelected}
+          onSelectCard={selectCard}
           decks={decks.decks}
           activeDeckId={decks.activeDeckId}
           cardIndex={cardIndex}

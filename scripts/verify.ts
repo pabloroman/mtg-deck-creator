@@ -15,6 +15,7 @@ import {
   buildSkeleton,
 } from '../src/lib/commander';
 import { buildCardIndex, cardKey, isLand, manaCurve, manaStats, shuffledLibrary } from '../src/lib/deck';
+import { formatRoute, parseRoute, type Route } from '../src/lib/route';
 import type { Color, OwnedCard, ResolvedArchetype } from '../src/types';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -198,6 +199,20 @@ console.log(`AND with unknown tag => ${two.length} (from ${single.length})`);
   assert.strictEqual(library.filter((c) => cardKey(c) === land).length, 4, 'expected 4 land copies');
   assert.ok(library.every((c) => cardKey(c) !== cmd), 'commander must not be in the library');
   console.log('shuffled library =>', library.length, 'cards');
+}
+
+// 6) URL hash routes: round-trip, and junk falls back to browse
+{
+  const routes: Route[] = [
+    { view: 'browse', id: null, card: null, grouped: false },
+    { view: 'build', id: 'deck 1/a?b', card: null, grouped: false },
+    { view: 'decks', id: 'goblins', card: 'abc-123', grouped: true },
+    { view: 'commander', id: 'x', card: 'abc-123', grouped: false },
+  ];
+  for (const r of routes) assert.deepStrictEqual(parseRoute(formatRoute(r)), r);
+  assert.strictEqual(parseRoute('').view, 'browse');
+  assert.strictEqual(parseRoute('#/nope/%E0%A4%A').view, 'browse');
+  console.log('routes =>', routes.map(formatRoute).join('  '));
 }
 
 // ---- synergy engine ----

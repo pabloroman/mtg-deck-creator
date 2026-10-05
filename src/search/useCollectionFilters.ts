@@ -60,7 +60,7 @@ export function useCollectionFilters(): FilterControls {
   const [playableOnly, setPlayableOnly] = useState(false);
   const [minQuantity, setMinQuantity] = useState(0);
   const [group, setGroup] = useState(true);
-  const [sort, setSort] = useState<SortKey>('name');
+  const [sort, setSort] = useState<SortKey>('edhrec');
 
   return {
     query,
